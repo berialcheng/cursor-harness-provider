@@ -1,0 +1,99 @@
+{
+  "projectName": "cursor-harness-provider",
+  "version": "0.3.0",
+  "date": "2026-11-04",
+  "platform": "darwin-arm64",
+  "node": "22.22.0",
+  "rust": "1.99.1",
+  "architecture": {
+    "core": "one pure Rust library",
+    "binding": "one shared Node-API library",
+    "adapters": [
+      "Pi",
+      "OpenCode"
+    ],
+    "javascriptInferenceFallback": false,
+    "cursorCliInference": false,
+    "localModelHttpProxy": false
+  },
+  "checks": {
+    "rustTests": 73,
+    "javascriptAndHostTests": 202,
+    "jsTestFiles": 24,
+    "typecheck": true,
+    "rustfmt": true,
+    "clippyDenyWarnings": true,
+    "productionBundleGuard": true,
+    "sourceDisclosureGuard": true
+  },
+  "hosts": {
+    "pi": [
+      "1.4.0",
+      "1.5.0"
+    ],
+    "opencode": "2.2.5/Bun",
+    "backend": "local mock Cursor HTTP/2, actual native module",
+    "cases": [
+      "text/thinking",
+      "host read allowed and result forwarded",
+      "host read blocked, no file content",
+      "same parked Rust RPC resumed"
+    ]
+  },
+  "liveService": "No fresh dual-host0.3 live-service validation; earlier OpenCode0.2 Rust Auto smoke is separate evidence",
+  "artifact": {
+    "version": "0.3.0",
+    "artifacts": {
+      "darwin-arm64": {
+        "file": "cursor_native.darwin-arm64.9ace42ea0ab216b4.node",
+        "sha256": "9ace42ea0ab216b4da94054b48e3156148ccef0411b35dca7ed97edd25b95773"
+      }
+    }
+  },
+  "installedConfiguration": {
+    "opencodeUnchanged": true,
+    "piUnchanged": true,
+    "oldWorkingInstallationsRetained": true
+  },
+  "review": "Limited focused read-only Pi/loader review found no additional critical/high issues; subsequent self-review fixed shared-loader hashed-generation caching and added two tests",
+  "licenses": {
+    "targetInventoryPackages": 168,
+    "noticeFiles": 286,
+    "missingBuildToolTexts": 9,
+    "napiCommitPinnedNotices": true,
+    "legalCertification": false
+  },
+  "npmAudit": {
+    "runtimeVulnerabilities": 0,
+    "development": {
+      "high": 0,
+      "moderate": 22,
+      "low": 1
+    },
+    "undiciOverride": "8.12.3"
+  },
+  "relocation": {
+    "destinationFolder": "cursor-harness-provider",
+    "gitMetadataAndWorkspaceLinksPreserved": true,
+    "postMoveFullCheck": true,
+    "postMovePi14HostCheck": true,
+    "buildScriptUsesRuntimeManifestDirectory": true,
+    "nativeChecksumUnchanged": true
+  },
+  "git": {
+    "snapshot": "Historical local validation before the first source push, not current repository state",
+    "localInitialized": true,
+    "branch": "main",
+    "committed": false,
+    "remoteCreated": false,
+    "pushed": false
+  },
+  "remoteDecision": "Historical local-only decision was superseded by explicit source-push authorization; package publishing remains separate",
+  "remoteCI": "See GitHub Actions for current results; this report records local validation",
+  "limits": [
+    "not full upstream Pi Max/structured-parameterized model parity",
+    "no HTTP response-header instrumentation in Pi",
+    "Windows journal unsupported; only macOS arm64 locally tested",
+    "no speed/billing/exactly-once guarantee"
+  ]
+}

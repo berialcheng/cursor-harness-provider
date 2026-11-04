@@ -1,0 +1,38 @@
+[package]
+name = "cursor-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+bytes = "1"
+futures-util = "0.3"
+h2 = "0.4"
+http = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+prost = "0.13"
+prost-types = "0.13"
+reqwest = { version = "0.12", default-features = false, features = ["http2", "rustls-tls-native-roots", "stream", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "fs", "io-util", "net"] }
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[build-dependencies]
+prost-build = "0.13"
+protoc-bin-vendored = "3"
+
+[dev-dependencies]
+tempfile = "3"

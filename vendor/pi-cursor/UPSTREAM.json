@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/Rahularya01/pi-cursor",
+  "version": "1.4.39",
+  "commit": "ef3cafb5c38081ce6e06df8e594241aabd9621e3",
+  "license": "MIT",
+  "policy": "Pinned source reference; JavaScript inference protocol engine must not enter production bundles."
+}

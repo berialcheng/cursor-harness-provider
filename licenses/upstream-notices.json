@@ -1,0 +1,22 @@
+{
+  "napi@2.16.17": {
+    "file": "upstream/napi-f217831-LICENSE",
+    "url": "https://raw.githubusercontent.com/napi-rs/napi-rs/f2178312d0e3e07beecc19836b91716a229107d3/LICENSE"
+  },
+  "napi-build@2.6.0": {
+    "file": "upstream/napi-a94cef3-LICENSE",
+    "url": "https://raw.githubusercontent.com/napi-rs/napi-rs/a94cef33f62e74682963dd085e283f52dcec2600/LICENSE"
+  },
+  "napi-derive@2.16.13": {
+    "file": "upstream/napi-a312b7e-LICENSE",
+    "url": "https://raw.githubusercontent.com/napi-rs/napi-rs/a312b7eb4e12d3e0a3e9770429ee05c333947a39/LICENSE"
+  },
+  "napi-derive-backend@1.0.75": {
+    "file": "upstream/napi-a312b7e-LICENSE",
+    "url": "https://raw.githubusercontent.com/napi-rs/napi-rs/a312b7eb4e12d3e0a3e9770429ee05c333947a39/LICENSE"
+  },
+  "napi-sys@2.4.0": {
+    "file": "upstream/napi-f1b8ab5-LICENSE",
+    "url": "https://raw.githubusercontent.com/napi-rs/napi-rs/f1b8ab5e645e674df33c796ef75aa278cd1b4a31/LICENSE"
+  }
+}

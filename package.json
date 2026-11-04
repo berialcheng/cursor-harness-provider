@@ -1,0 +1,45 @@
+{
+  "name": "cursor-harness-provider",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Unofficial in-process native Cursor provider for Pi and OpenCode",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "pi": {
+    "extensions": [
+      "./packages/pi/dist/index.js"
+    ]
+  },
+  "scripts": {
+    "build": "npm run build:rust && npm run build:js",
+    "build:rust": "node scripts/build-rust.mjs",
+    "build:js": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:rust": "node scripts/test-rust.mjs",
+    "licenses": "node scripts/collect-licenses.mjs",
+    "audit:source": "node scripts/audit-source.mjs",
+    "lint:rust": "node scripts/lint-rust.mjs",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run lint:rust && npm run test:rust && npm run build && npm test"
+  },
+  "overrides": {
+    "undici": "8.12.3"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "3.0.19",
+    "@opencode/plugin": "2.2.5",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@bufbuild/protobuf": "2.13.0",
+    "@types/node": "22.19.19",
+    "esbuild": "0.27.4",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}

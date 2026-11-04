@@ -1,0 +1,227 @@
+{
+  "repository": "https://github.com/Rahularya01/pi-cursor",
+  "version": "1.4.39",
+  "commit": "ef3cafb5c38081ce6e06df8e594241aabd9621e3",
+  "files": [
+    {
+      "file": "src/auth/oauth.ts",
+      "sha256": "fd5c6e704db12fc285744e3eb380e35de1d53f9248318e777ed3e83bb9d8edaa",
+      "patched": false
+    },
+    {
+      "file": "src/client/bridge.ts",
+      "sha256": "c0e67411cd8715d3f1d634c2b6e5f6160281bf9883efb4bb2874db989f9e93c8",
+      "patched": true
+    },
+    {
+      "file": "src/client/cursor-wire.ts",
+      "sha256": "78fd346abdad059d13c673cab5f0268f8c24e9b6b670b611ab37b41cb19e77ec",
+      "patched": false
+    },
+    {
+      "file": "src/client/h2-proxy.ts",
+      "sha256": "93e50a9eb2802de5557b91429717d76827e801ed81cca0331594dd2245ea9b2f",
+      "patched": true
+    },
+    {
+      "file": "src/client/h2-session.ts",
+      "sha256": "02fc011a23e418983829dda564916c3a3076e8460b6a18956a6b78fd937a422a",
+      "patched": false
+    },
+    {
+      "file": "src/client/h2-unary.ts",
+      "sha256": "01d1289d62d1a99c83961b7891beda56375fe8fccb83c283c7506a20d15fe9b2",
+      "patched": true
+    },
+    {
+      "file": "src/config/index.ts",
+      "sha256": "578c924aefb5647284608113585fd3ff14d00df6bac1294be180ca99dc747570",
+      "patched": true
+    },
+    {
+      "file": "src/diagnostics/diagnostics.ts",
+      "sha256": "d8cdc811a76099484016b63863e2be3d1a96e036d2f76120513d79dd25160d39",
+      "patched": false
+    },
+    {
+      "file": "src/models/limits.ts",
+      "sha256": "27cf57130d81e1eefdb54127decc7d454b51a7c3bfbbffd312519993665fadaa",
+      "patched": false
+    },
+    {
+      "file": "src/proto/agent_pb.ts",
+      "sha256": "40a89a0324e6a0115a16f23f0e4272d97b54b611370123580e1f49ca89197e6c",
+      "patched": false
+    },
+    {
+      "file": "src/stream/bridge-session.ts",
+      "sha256": "ae4f4d1acf0dbca1a78600bd9daeba608e08c904f50eab95cb9ac06cafd3a960",
+      "patched": true
+    },
+    {
+      "file": "src/stream/client-transcript.ts",
+      "sha256": "47e4589b758809cb3ac0b8d4e0d5a1f90d04f5dc8b43c778dfdb3771731dab47",
+      "patched": false
+    },
+    {
+      "file": "src/stream/clipboard-images.ts",
+      "sha256": "6943d59e1468aacc2dad1abd5868c8c0e877b8330a077cb50e2bb23f202cb951",
+      "patched": true
+    },
+    {
+      "file": "src/stream/config.ts",
+      "sha256": "8013470fe4b11963ce8df5dbda8662cc65b11faf477aa17db4c92d8b333b7ab4",
+      "patched": false
+    },
+    {
+      "file": "src/stream/context-normalize.ts",
+      "sha256": "bdab3e872e9110fa6d5527902981cefdda39a84196240d6084b1a983008b1ee6",
+      "patched": false
+    },
+    {
+      "file": "src/stream/debug-log.ts",
+      "sha256": "91928e8face814a8f7c170d3e15609d988db44dbe2a9b1ad76981177c4f89baa",
+      "patched": true
+    },
+    {
+      "file": "src/stream/drift.ts",
+      "sha256": "dda49b7f798316760ead68e8e6fe33c2a5b8dffd3ce5c4b9d389850b64098f62",
+      "patched": false
+    },
+    {
+      "file": "src/stream/exec-native.ts",
+      "sha256": "dd63f6762f51f423fd5e40bd1b9bf261772036801c8b26550201064bfa747217",
+      "patched": true
+    },
+    {
+      "file": "src/stream/images.ts",
+      "sha256": "45fbd27581a10c2c7b15f94efe1f629afcf7540ff46e91fb24703f7b9e917353",
+      "patched": false
+    },
+    {
+      "file": "src/stream/interaction-query.ts",
+      "sha256": "bb7b6d2f769816bd647d97d49ade9b992b4fad4edd2ee13d1a293315663c691d",
+      "patched": false
+    },
+    {
+      "file": "src/stream/local-tool-policy.ts",
+      "sha256": "8efae724e7cfecca2321738e81ef62808c2f18a2a305266bb94fab215c9e9711",
+      "patched": false
+    },
+    {
+      "file": "src/stream/message-parsing.ts",
+      "sha256": "96b472c6035b6518efc65761c80ee283fcb2f4f6ed1e4059ae6550cc62c186e2",
+      "patched": false
+    },
+    {
+      "file": "src/stream/model-cache.ts",
+      "sha256": "7afdcccf1a865021d1f56401ba05627d487802cc2fd7eedac42bc5456f591cd6",
+      "patched": false
+    },
+    {
+      "file": "src/stream/model-discovery.ts",
+      "sha256": "4b0a4e3bb1a67e39b59a5b9f2739d86a55273e3265f6904d1cc4c0e61a6b9494",
+      "patched": false
+    },
+    {
+      "file": "src/stream/model-routing.ts",
+      "sha256": "dd6ff6287f5d0a5dc0b04937dd1a49d9dbb0eac0204817cb8552bc248f0e61ed",
+      "patched": false
+    },
+    {
+      "file": "src/stream/native-core.ts",
+      "sha256": "9d1ba0945ac4bf9bf37be55e21bf058aebdc2de7cdffaf73b8231eee8fbcfba9",
+      "patched": true
+    },
+    {
+      "file": "src/stream/pi-adapter.ts",
+      "sha256": "ab7cf7b8ec7836ecdc7dfebb82f438feaee91148d80a725f7a48ea57b52ff403",
+      "patched": true
+    },
+    {
+      "file": "src/stream/protocol.ts",
+      "sha256": "dc41e131638fe4bea3a8de873c25492e0126f3714be27a3f56d5eb4e27a42afc",
+      "patched": true
+    },
+    {
+      "file": "src/stream/recovery.ts",
+      "sha256": "ccdfe305503efd9989b60615fcfb6fba64b28045460dd1f38d8f49406c945c9c",
+      "patched": false
+    },
+    {
+      "file": "src/stream/request-build.ts",
+      "sha256": "c8719e897baff6be81d9265af32775714cb8e73f670016936d32335896184e6c",
+      "patched": true
+    },
+    {
+      "file": "src/stream/root-prompt.ts",
+      "sha256": "3099b09128b7fe1874e5314573b109da68ad919e27fd70463e79d97565e205ce",
+      "patched": true
+    },
+    {
+      "file": "src/stream/run-journal.ts",
+      "sha256": "2475059fe9d2f9e818fd02bd236d82d9bab9748394bb17cfafae5c470b7ad22a",
+      "patched": false
+    },
+    {
+      "file": "src/stream/server-messages.ts",
+      "sha256": "d3015669c61c1cbd2ff507e0055509ca0655a46a6f4eddfdd58dd79bc3332fdc",
+      "patched": true
+    },
+    {
+      "file": "src/stream/session-state.ts",
+      "sha256": "e571d8f9882f7930537652e26d7f54b6f722fbf0c8a88a0922e9a3d5221e9721",
+      "patched": false
+    },
+    {
+      "file": "src/stream/stream-writer.ts",
+      "sha256": "535b064571c4d11ac5f0f428b5a7d5e4a62eeb83c9c1571fe53530b46e140993",
+      "patched": true
+    },
+    {
+      "file": "src/stream/thinking-filter.ts",
+      "sha256": "055b715ba58dbbf9844374aed11478116c7de5e9659df51bf6027ebcc9482396",
+      "patched": false
+    },
+    {
+      "file": "src/stream/tool-schema.ts",
+      "sha256": "380eb933123a8b8df01db8e881f76436f5a4e9e684b6418198f115e322aa909d",
+      "patched": true
+    },
+    {
+      "file": "src/stream/transport-errors.ts",
+      "sha256": "9482bba00f23f7f3b4ae6096b449b8fa8069b8498b882e1773849eefdbc5f659",
+      "patched": true
+    },
+    {
+      "file": "src/stream/tuning.ts",
+      "sha256": "3f20c488dc6a8688fdb03034555a47eecd42a4ec54055182116c33e23fb9d0ea",
+      "patched": true
+    },
+    {
+      "file": "src/stream/types.ts",
+      "sha256": "efc7f19845dc1c62e77d09df8554eb2e06a911d207f3d62053c2802f6e558b2d",
+      "patched": true
+    },
+    {
+      "file": "src/types/enums.ts",
+      "sha256": "9ec934ae6d2bc3fb0adddf30a023263553a9437dde7a0d5c393b3ea0e0d0d353",
+      "patched": false
+    },
+    {
+      "file": "src/utils/cache-dir.ts",
+      "sha256": "45aac6e2a0604868ad8c90ba20ee4b2770da2341fe18a0b53bb3465d804ad69e",
+      "patched": true
+    },
+    {
+      "file": "src/utils/security.ts",
+      "sha256": "70f07a8dbf33670e7ab6e3ccab9cd994b8bced43a52bb8e47130bf2ee50c4cc2",
+      "patched": true
+    },
+    {
+      "file": "src/utils/util.ts",
+      "sha256": "062289674ed98316990657f01e89f5c500e3a2295129380d5c9ba7530e579a9f",
+      "patched": true
+    }
+  ]
+}

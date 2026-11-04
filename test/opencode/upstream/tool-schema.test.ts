@@ -1,0 +1,155 @@
+// MIT upstream regression test; see THIRD_PARTY_NOTICES.md
+import { toJson } from "@bufbuild/protobuf";
+import { ValueSchema } from "@bufbuild/protobuf/wkt";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { buildMcpToolDefinitions, slimOpenAIToolsForCursor } from "../../reference/pi-cursor/src/stream/tool-schema.js";
+import type { OpenAIToolDef } from "../../reference/pi-cursor/src/stream/types.js";
+
+const previousSlimTools = process.env.OPENCODE_CURSOR_SLIM_TOOLS;
+
+afterEach(() => {
+  if (previousSlimTools === undefined) delete process.env.OPENCODE_CURSOR_SLIM_TOOLS;
+  else process.env.OPENCODE_CURSOR_SLIM_TOOLS = previousSlimTools;
+});
+
+function decodeSchema(tool: ReturnType<typeof buildMcpToolDefinitions>[number]): any {
+  const schema = toJson(ValueSchema, tool.inputSchema!);
+  expect(JSON.parse(tool.inputSchemaJson!)).toEqual(schema);
+  return schema;
+}
+
+function descriptionPropertyTool(): OpenAIToolDef[] {
+  return [
+    {
+      type: "function",
+      function: {
+        name: "delegate",
+        description: "Delegate a task.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "Task prompt." },
+            description: { type: "string", description: "Short task label." },
+            options: {
+              type: "object",
+              properties: {
+                description: { type: "string", description: "Option label." },
+                value: { type: "string", description: "Option value." },
+              },
+              required: ["description", "value"],
+            },
+            entries: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  description: { type: "string", description: "Entry label." },
+                  value: { type: "string", description: "Entry value." },
+                },
+                required: ["description", "value"],
+              },
+            },
+          },
+          required: ["prompt", "description", "options", "entries"],
+        },
+      },
+    },
+  ];
+}
+
+describe("Cursor tool schema encoding", () => {
+  it.each(["0", "1"])("preserves properties named description with slim mode %s", (slimMode) => {
+    process.env.OPENCODE_CURSOR_SLIM_TOOLS = slimMode;
+    const [tool] = buildMcpToolDefinitions(descriptionPropertyTool());
+    const schema = decodeSchema(tool!);
+
+    expect(schema.properties.description).toEqual({
+      type: "string",
+      description: "Short task label.",
+    });
+    expect(schema.properties.options.properties.description.description).toBe("Option label.");
+    expect(schema.properties.entries.items.properties.description.description).toBe("Entry label.");
+    expect(schema.properties.options.properties.description).toBeDefined();
+    expect(schema.properties.entries.items.properties.description).toBeDefined();
+    expect(schema.required).toContain("description");
+    expect(schema.properties.options.required).toContain("description");
+    expect(schema.properties.entries.items.required).toContain("description");
+  });
+
+  it("distinguishes schema annotations from user-defined and literal keys", () => {
+    process.env.OPENCODE_CURSOR_SLIM_TOOLS = "1";
+    const [tool] = buildMcpToolDefinitions([
+      {
+        type: "function",
+        function: {
+          name: "schema_keywords",
+          description: "Check schema keyword contexts.",
+          parameters: {
+            type: "object",
+            properties: {
+              title: { type: "string", title: "Parameter prose" },
+              default: { type: "string", default: "fallback" },
+              literal: {
+                type: "object",
+                enum: [{ description: "literal description", title: "literal title" }],
+              },
+            },
+            required: ["title", "default", "literal"],
+            $defs: {
+              description: { type: "string", description: "Definition prose" },
+            },
+          },
+        },
+      },
+    ]);
+    const schema = decodeSchema(tool!);
+
+    expect(schema.properties.title).toEqual({ type: "string" });
+    expect(schema.properties.default).toEqual({ type: "string" });
+    expect(schema.$defs.description).toEqual({
+      type: "string",
+      description: "Definition prose",
+    });
+    expect(schema.properties.literal.enum).toEqual([
+      { description: "literal description", title: "literal title" },
+    ]);
+    expect(schema.required).toEqual(["title", "default", "literal"]);
+  });
+
+  it.each(["0", "1"])(
+    "handles non-function and malformed tools defensively in mode %s",
+    (slimMode) => {
+      process.env.OPENCODE_CURSOR_SLIM_TOOLS = slimMode;
+      const mixedTools = [
+        null as any,
+        undefined as any,
+        "invalid-tool-item" as any,
+        { type: "web_search" } as any,
+        { type: "function" } as any,
+        { type: "function", function: "not-an-object" } as any,
+        { type: "function", function: { name: "   " } } as any,
+        {
+          type: "function",
+          function: {
+            name: "valid_tool",
+            description: "A valid tool",
+            parameters: { type: "object", properties: { key: { type: "string" } } },
+          },
+        },
+      ];
+
+      // slimOpenAIToolsForCursor should not crash on non-function tool definitions
+      const slimmed = slimOpenAIToolsForCursor(mixedTools);
+      expect(slimmed.length).toBe(8);
+      expect(slimmed[3]).toEqual({ type: "web_search" } as any);
+      expect(slimmed[7]!.function?.name).toBe("valid_tool");
+
+      // buildMcpToolDefinitions should safely skip non-function tools in all modes
+      const mcpTools = buildMcpToolDefinitions(mixedTools);
+      expect(mcpTools.length).toBe(1);
+      expect(mcpTools[0]!.name).toBe("valid_tool");
+      expect(mcpTools[0]!.toolName).toBe("valid_tool");
+    },
+  );
+});

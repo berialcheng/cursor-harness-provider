@@ -1,0 +1,36 @@
+name: check
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/cursor-native-target
+      OPENCODE_CURSOR_REQUIRE_HOST: "1"
+      CURSOR_NATIVE_REQUIRE_PI: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> ${{ runner.temp }}/cursor-native-target"
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - run: npm install --global --ignore-scripts --legacy-peer-deps @opencode/cli@2.2.5
+      - run: npm run check
+      - run: npm run licenses
+      - run: npm run audit:source

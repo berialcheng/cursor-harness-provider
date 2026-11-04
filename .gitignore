@@ -1,0 +1,14 @@
+node_modules/
+**/dist/
+**/native/*.node
+**/native/manifest.json
+**/target/
+.env
+.env.*
+.npmrc
+.cargo/credentials
+.cargo/credentials.toml
+*.log
+*.jsonl
+.DS_Store
+coverage/

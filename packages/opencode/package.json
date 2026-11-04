@@ -1,0 +1,17 @@
+{
+  "name": "@cursor-native/opencode",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./dist/plugin.js",
+    "./model": "./dist/model.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@cursor-native/native": "0.3.0"
+  }
+}
