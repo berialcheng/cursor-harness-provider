@@ -44,7 +44,7 @@ Cargo output lives outside this watched repository. `CARGO_TARGET_DIR` can selec
 Source and native package versions must match. `npm run build` checks Cargo/workspace versions and writes a SHA-256 manifest.
 A git checkout is not a precompiled distribution: missing/mismatched native binaries fail clearly, never silently compile or fall back to CLI/JS.
 
-Public npm access was reset in the validation environment; development dependencies were obtained through an existing mirror. The committed lockfile uses canonical public npm URLs with unchanged integrity hashes. A clean public-network CI build remains to be verified.
+Initial local development used an existing npm mirror after public npm connections were reset. The committed lockfile uses canonical public npm URLs with unchanged integrity hashes. A subsequent [clean GitHub Actions run](https://github.com/berialcheng/cursor-harness-provider/actions/runs/41799648850) passed public-registry installation and the checks on macOS and Linux.
 
 ## Load locally
 
@@ -83,6 +83,10 @@ All file/shell/network tool actions stay at the host's permission gate; Cursor-n
 Journals can contain full prompts/tool data. Private file permissions are not encryption. Pi/OpenCode use separate host namespaces.
 Uncertain actions, mixed/unknown executable protocol messages, and unsafe partial-output replays fail closed. No exactly-once guarantee.
 No performance, quota, cache savings or billing superiority is claimed.
+
+## Package releases
+
+npm releases are not enabled. The [publishing design](docs/PUBLISHING.md) records tarball gaps, native build requirements and the proposed OIDC/staged-approval pipeline. Final package names and registry operations require separate authorization.
 
 ## Provenance
 
