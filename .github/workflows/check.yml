@@ -13,11 +13,12 @@ jobs:
         os: [macos-14, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
     env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cursor-native-target
       OPENCODE_CURSOR_REQUIRE_HOST: "1"
       CURSOR_NATIVE_REQUIRE_PI: "1"
     steps:
       - uses: actions/checkout@v4
+      - name: Set external Cargo target directory
+        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cursor-native-target" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: "22.22.0"
