@@ -12,20 +12,30 @@ Final npm names remain a user decision. Renaming npm workspaces requires updatin
 
 For the first release, put the tested platform binaries together in the native package. This matches the existing relative `native/manifest.json` loader. Per-platform optional packages are a later size optimization and require a loader change, not just a CI matrix.
 
-## Observed release blockers
+## Packaging/preflight status
 
-`npm pack --dry-run --ignore-scripts --json` was run for all three workspaces:
+The initial dry-run exposed missing distribution files. The license and declaration fixes below are now implemented and locally tested; registry publication remains disabled:
 
 | Area | Current result | Required preparation |
 | --- | --- | --- |
 | Publish permission | All packages have `private: true` | Keep root private; enable only approved publishable workspaces |
-| Native types | Export points to `src/index.ts`, absent from tarball | Emit declarations and export the included `dist/index.d.ts` |
-| Licenses | No workspace tarball includes `LICENSE` | Include the project license in every package |
-| Notices | Pi includes a notice; native/OpenCode do not | Assemble package-appropriate attribution and actual referenced license texts |
+| Native types | `dist/index.d.ts` emitted, exported and packed | Verified by an isolated TypeScript consumer |
+| Licenses | Every tarball includes the unchanged project `LICENSE` | Compared byte-for-byte with the canonical root license |
+| Notices | Every package includes upstream MIT text; native includes referenced Rust notices | Verified against an inventoried, hashed license tree |
 | Native platforms | Local tarball contains only darwin-arm64 | Build, test and merge the explicitly supported target set |
 | Registry metadata | No publish/repository configuration | Set public access, npmjs registry, repository URL and workspace directory |
 
 Add package-level READMEs and a tested Pi peer-dependency range. Test the real tarballs, not workspace symlinks. Re-run the production bundle guard so no reference JS protocol engine or cross-host SDK enters a release.
+
+### Implemented local checks
+
+`npm run build` emits declarations, collects target-specific notices and assembles package licenses. `npm run check` additionally runs `npm run test:packages`, which creates real tarballs, installs all three offline with lifecycle scripts and peer auto-install disabled, loads the native engine with no Rust toolchain available, and typechecks an isolated consumer. npm uses an isolated temporary home/config/cache. Existing real Pi/OpenCode flow tests still exercise workspace adapters; packed-host end-to-end flows remain a release gate, not a claim of this smoke test.
+
+The project and upstream license sources remain unchanged. Workspace `LICENSE` and `licenses/` copies are generated/ignored; attribution files are versioned. The assembly refuses symlinked inputs, unmanaged output directories and manually changed package copyright files.
+
+Cargo's normal dependency closure is recorded conservatively, including normal proc-macro/codegen edges; active build/test dependencies and inactive target/optional entries are classified separately. Missing normal-dependency notices fail preparation. Only explicitly classified protoc-bin-vendored build tools may retain their recorded text gaps; the compiler binaries are not shipped. Unknown missing build-tool notices also fail. This is still not a legal-compliance certification or exact runtime-link SBOM.
+
+Current packing rejects additional binary platforms without matching target-specific license inventories. Multi-platform aggregation is still to be implemented; do not bypass this check to distribute an incompletely attributed fat native package.
 
 ## Native build policy
 
@@ -77,4 +87,4 @@ Use GitHub-hosted runners. Current minimum versions are Node 22.14+, npm 11.5.1+
 
 For public packages from this public repository, npm OIDC publishing supports automatic provenance. Verify the published attestation and tarball integrity; a provenance statement does not replace tests or license review. No persistent npm token, host OAuth store, Cursor token or developer journal belongs in an artifact.
 
-The next implementation step is packaging/preflight work plus confirmation of the npm namespace. No `publish.yml`, version tag, npm staging operation or npm release was created by this design.
+The next release steps are confirmation of the npm namespace, remaining metadata/README/peer-range work, multi-platform artifact/license aggregation, packed-host verification and the protected publishing workflow. No `publish.yml`, version tag, npm staging operation or npm release was created by this design.

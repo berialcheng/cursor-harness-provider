@@ -12,3 +12,7 @@ node_modules/
 *.jsonl
 .DS_Store
 coverage/
+# Generated license copies; canonical sources remain versioned at the root.
+/packages/*/LICENSE
+/packages/*/licenses/
+/packages/*/.package-licenses-*/

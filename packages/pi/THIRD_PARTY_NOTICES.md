@@ -1,5 +1,10 @@
 # Third-party notices
 
+The project's MIT license is included in `LICENSE`. An unchanged copy of the
+upstream license is also included in `licenses/pi-cursor/LICENSE`.
+Pi SDKs remain external host-provided peers. Rust dependency notices are supplied
+with the separate native dependency package.
+
 ## pi-cursor
 
 `src/auth/oauth.ts`, `src/auth/system.ts`, and

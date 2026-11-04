@@ -7,7 +7,9 @@
   "exports": "./dist/index.js",
   "files": [
     "dist",
-    "THIRD_PARTY_NOTICES.md"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses"
   ],
   "dependencies": {
     "@cursor-native/native": "0.3.0"

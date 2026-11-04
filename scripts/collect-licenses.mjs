@@ -2,8 +2,11 @@
 import { mkdirSync, readdirSync, readFileSync, copyFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { root, checkRustWorkspace, runCargo } from "./rust-env.mjs";
+import { classifyDependencies } from "./package-licenses.mjs";
 const { host } = checkRustWorkspace();
-const metadata = JSON.parse(runCargo(["metadata", "--locked", "--offline", "--filter-platform", host, "--format-version", "1"], { capture: true }));
+const target = process.env.CARGO_BUILD_TARGET || host;
+const metadata = JSON.parse(runCargo(["metadata", "--locked", "--offline", "--filter-platform", target, "--format-version", "1"], { capture: true }));
+const dependencyScopes = classifyDependencies(metadata);
 const out = join(root, "licenses", "rust");
 mkdirSync(out, { recursive: true });
 const inventory = [];
@@ -41,12 +44,13 @@ for (const pkg of metadata.packages.filter(p => p.source).sort((a,b) => (a.name 
     names.push(relative(join(root, "licenses"), target).split("\\\\").join("/"));
   }
   inventory.push({ name: pkg.name, version: pkg.version, license: pkg.license, source: pkg.source,
+    dependencyScope: dependencyScopes.get(pkg.id) || "inactive",
     notices: names, ...(fallback ? { noticeOrigin: fallback.url } : {}),
     noticeStatus: names.length ? "upstream files copied" : "SPDX metadata only; notice text missing, binary redistribution review required" });
 }
 writeFileSync(join(root, "licenses", "rust-dependencies.json"), JSON.stringify({
-  target: host, scope: "Conservative Cargo.lock target inventory, includes build/test dependencies, not an exact runtime-link SBOM",
+  target, scope: "Conservative Cargo.lock target inventory, includes build/test dependencies, not an exact runtime-link SBOM",
   dependencies: inventory,
 }, null, 2) + "\n");
-console.log(JSON.stringify({ target: host, dependencies: inventory.length, noticeFiles: inventory.reduce((n,p) => n + p.notices.length, 0),
+console.log(JSON.stringify({ target, dependencies: inventory.length, noticeFiles: inventory.reduce((n,p) => n + p.notices.length, 0),
   missingNoticeFiles: inventory.filter(p => !p.notices.length).map(p => p.name + "@" + p.version) }, null, 2));

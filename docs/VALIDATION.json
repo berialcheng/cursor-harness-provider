@@ -18,8 +18,8 @@
   },
   "checks": {
     "rustTests": 73,
-    "javascriptAndHostTests": 202,
-    "jsTestFiles": 24,
+    "javascriptAndHostTests": 216,
+    "jsTestFiles": 25,
     "typecheck": true,
     "rustfmt": true,
     "clippyDenyWarnings": true,
@@ -71,6 +71,23 @@
       "low": 1
     },
     "undiciOverride": "8.12.3"
+  },
+  "packagingPreflight": {
+    "status": "local validation; no npm release",
+    "packageCount": 3,
+    "unchangedProjectLicenseIncluded": true,
+    "upstreamMITTextIncluded": true,
+    "nativeLicenseAssets": 293,
+    "nativeDeclarationsIncluded": true,
+    "offlineTarballInstall": true,
+    "lifecycleScriptsDisabled": true,
+    "nativeLoadWithoutRustToolchain": true,
+    "isolatedTypeConsumer": true,
+    "licenseRegressionTests": 14,
+    "cargoDependencyScopeClassified": true,
+    "knownProtocBuildToolTextGaps": 9,
+    "multiTargetAggregationImplemented": false,
+    "packedHostEndToEndFlowsVerified": false
   },
   "relocation": {
     "destinationFolder": "cursor-harness-provider",

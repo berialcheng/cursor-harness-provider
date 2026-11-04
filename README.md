@@ -37,11 +37,11 @@ Requires Node>=22.19 and **an existing Rust toolchain >=1.99.1**. No automatic t
 npm ci --ignore-scripts --legacy-peer-deps
 npm run build
 npm run check
-npm run licenses
 ```
 
 Cargo output lives outside this watched repository. `CARGO_TARGET_DIR` can select an existing external cache.
 Source and native package versions must match. `npm run build` checks Cargo/workspace versions and writes a SHA-256 manifest.
+The build also emits native TypeScript declarations and assembles project/upstream/Rust license texts into the workspace packages. `npm run check` packs and installs all three tarballs offline with lifecycle scripts disabled, then checks native loading without a Rust toolchain and an isolated TypeScript consumer. Packed Pi/OpenCode end-to-end flows and multi-platform release aggregation remain separate release gates.
 A git checkout is not a precompiled distribution: missing/mismatched native binaries fail clearly, never silently compile or fall back to CLI/JS.
 
 Initial local development used an existing npm mirror after public npm connections were reset. The committed lockfile uses canonical public npm URLs with unchanged integrity hashes. A subsequent [clean GitHub Actions run](https://github.com/berialcheng/cursor-harness-provider/actions/runs/41799648850) passed public-registry installation and the checks on macOS and Linux.

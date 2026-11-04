@@ -6,13 +6,16 @@
   "license": "MIT",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
   "files": [
     "dist",
-    "native"
+    "native",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses"
   ],
   "dependencies": {}
 }

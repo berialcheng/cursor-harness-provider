@@ -7,6 +7,7 @@
       "version": "1.1.5",
       "license": "Unlicense OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/aho-corasick-1.1.5/COPYING",
         "rust/aho-corasick-1.1.5/LICENSE-MIT"
@@ -18,6 +19,7 @@
       "version": "1.0.104",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/anyhow-1.0.104/LICENSE-APACHE",
         "rust/anyhow-1.0.104/LICENSE-MIT"
@@ -29,6 +31,7 @@
       "version": "1.1.2",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/atomic-waker-1.1.2/LICENSE-APACHE",
         "rust/atomic-waker-1.1.2/LICENSE-MIT",
@@ -41,6 +44,7 @@
       "version": "0.22.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/base64-0.22.1/LICENSE-APACHE",
         "rust/base64-0.22.1/LICENSE-MIT"
@@ -52,6 +56,7 @@
       "version": "0.23.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/base64-0.23.1/LICENSE-APACHE",
         "rust/base64-0.23.1/LICENSE-MIT"
@@ -63,6 +68,7 @@
       "version": "2.13.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/bitflags-2.13.2/LICENSE-APACHE",
         "rust/bitflags-2.13.2/LICENSE-MIT"
@@ -74,6 +80,7 @@
       "version": "0.10.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/block-buffer-0.10.4/LICENSE-APACHE",
         "rust/block-buffer-0.10.4/LICENSE-MIT"
@@ -85,6 +92,7 @@
       "version": "1.12.1",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/bytes-1.12.1/LICENSE"
       ],
@@ -95,6 +103,7 @@
       "version": "1.11.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/cc-1.11.0/LICENSE-APACHE",
         "rust/cc-1.11.0/LICENSE-MIT"
@@ -106,6 +115,7 @@
       "version": "0.2.2",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/cfg_aliases-0.2.2/LICENSE"
       ],
@@ -116,6 +126,7 @@
       "version": "1.0.5",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/cfg-if-1.0.5/LICENSE-APACHE",
         "rust/cfg-if-1.0.5/LICENSE-MIT"
@@ -127,6 +138,7 @@
       "version": "0.10.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/chacha20-0.10.2/LICENSE-APACHE",
         "rust/chacha20-0.10.2/LICENSE-MIT"
@@ -138,6 +150,7 @@
       "version": "0.6.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/convert_case-0.6.0/LICENSE"
       ],
@@ -148,6 +161,7 @@
       "version": "0.8.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/core-foundation-sys-0.8.7/LICENSE-APACHE",
         "rust/core-foundation-sys-0.8.7/LICENSE-MIT"
@@ -159,6 +173,7 @@
       "version": "0.10.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/core-foundation-0.10.1/LICENSE-APACHE",
         "rust/core-foundation-0.10.1/LICENSE-MIT"
@@ -170,6 +185,7 @@
       "version": "0.2.17",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/cpufeatures-0.2.17/LICENSE-APACHE",
         "rust/cpufeatures-0.2.17/LICENSE-MIT"
@@ -181,6 +197,7 @@
       "version": "0.1.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/crypto-common-0.1.7/LICENSE-APACHE",
         "rust/crypto-common-0.1.7/LICENSE-MIT"
@@ -192,6 +209,7 @@
       "version": "0.2.9",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/ctor-0.2.9/LICENSE-APACHE",
         "rust/ctor-0.2.9/LICENSE-MIT"
@@ -203,6 +221,7 @@
       "version": "0.10.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/digest-0.10.7/LICENSE-APACHE",
         "rust/digest-0.10.7/LICENSE-MIT"
@@ -214,6 +233,7 @@
       "version": "0.2.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/displaydoc-0.2.7/LICENSE-APACHE",
         "rust/displaydoc-0.2.7/LICENSE-MIT"
@@ -225,6 +245,7 @@
       "version": "1.19.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/either-1.19.0/LICENSE-APACHE",
         "rust/either-1.19.0/LICENSE-MIT"
@@ -236,6 +257,7 @@
       "version": "1.0.3",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/equivalent-1.0.3/LICENSE-APACHE",
         "rust/equivalent-1.0.3/LICENSE-MIT"
@@ -247,6 +269,7 @@
       "version": "0.3.14",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/errno-0.3.14/LICENSE-APACHE",
         "rust/errno-0.3.14/LICENSE-MIT"
@@ -258,6 +281,7 @@
       "version": "2.5.0",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/fastrand-2.5.0/LICENSE-APACHE",
         "rust/fastrand-2.5.0/LICENSE-MIT"
@@ -269,6 +293,7 @@
       "version": "0.1.15",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/find-msvc-tools-0.1.15/LICENSE-APACHE",
         "rust/find-msvc-tools-0.1.15/LICENSE-MIT"
@@ -280,6 +305,7 @@
       "version": "0.5.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/fixedbitset-0.5.7/LICENSE-APACHE",
         "rust/fixedbitset-0.5.7/LICENSE-MIT"
@@ -291,6 +317,7 @@
       "version": "1.0.7",
       "license": "Apache-2.0 / MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/fnv-1.0.7/LICENSE-APACHE",
         "rust/fnv-1.0.7/LICENSE-MIT"
@@ -302,6 +329,7 @@
       "version": "1.2.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/form_urlencoded-1.2.2/LICENSE-APACHE",
         "rust/form_urlencoded-1.2.2/LICENSE-MIT"
@@ -313,6 +341,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/futures-channel-0.3.34/LICENSE-APACHE",
         "rust/futures-channel-0.3.34/LICENSE-MIT"
@@ -324,6 +353,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/futures-core-0.3.34/LICENSE-APACHE",
         "rust/futures-core-0.3.34/LICENSE-MIT"
@@ -335,6 +365,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/futures-io-0.3.34/LICENSE-APACHE",
         "rust/futures-io-0.3.34/LICENSE-MIT"
@@ -346,6 +377,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/futures-macro-0.3.34/LICENSE-APACHE",
         "rust/futures-macro-0.3.34/LICENSE-MIT"
@@ -357,6 +389,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/futures-sink-0.3.34/LICENSE-APACHE",
         "rust/futures-sink-0.3.34/LICENSE-MIT"
@@ -368,6 +401,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/futures-task-0.3.34/LICENSE-APACHE",
         "rust/futures-task-0.3.34/LICENSE-MIT"
@@ -379,6 +413,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/futures-util-0.3.34/LICENSE-APACHE",
         "rust/futures-util-0.3.34/LICENSE-MIT"
@@ -390,6 +425,7 @@
       "version": "0.14.7",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/generic-array-0.14.7/LICENSE"
       ],
@@ -400,6 +436,7 @@
       "version": "0.2.17",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/getrandom-0.2.17/LICENSE-APACHE",
         "rust/getrandom-0.2.17/LICENSE-MIT"
@@ -411,6 +448,7 @@
       "version": "0.4.3",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/getrandom-0.4.3/LICENSE-APACHE",
         "rust/getrandom-0.4.3/LICENSE-MIT"
@@ -422,6 +460,7 @@
       "version": "0.4.20",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/h2-0.4.20/LICENSE"
       ],
@@ -432,6 +471,7 @@
       "version": "0.17.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/hashbrown-0.17.1/LICENSE-APACHE",
         "rust/hashbrown-0.17.1/LICENSE-MIT"
@@ -443,6 +483,7 @@
       "version": "0.5.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/heck-0.5.0/LICENSE-APACHE",
         "rust/heck-0.5.0/LICENSE-MIT"
@@ -454,6 +495,7 @@
       "version": "0.1.5",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/http-body-util-0.1.5/LICENSE"
       ],
@@ -464,6 +506,7 @@
       "version": "1.1.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/http-body-1.1.0/LICENSE"
       ],
@@ -474,6 +517,7 @@
       "version": "1.5.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/http-1.5.0/LICENSE-APACHE",
         "rust/http-1.5.0/LICENSE-MIT"
@@ -485,6 +529,7 @@
       "version": "1.10.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/httparse-1.10.1/LICENSE-APACHE",
         "rust/httparse-1.10.1/LICENSE-MIT"
@@ -496,6 +541,7 @@
       "version": "0.27.10",
       "license": "Apache-2.0 OR ISC OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/hyper-rustls-0.27.10/LICENSE-APACHE",
         "rust/hyper-rustls-0.27.10/LICENSE-ISC",
@@ -508,6 +554,7 @@
       "version": "0.1.21",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/hyper-util-0.1.21/LICENSE"
       ],
@@ -518,6 +565,7 @@
       "version": "1.12.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/hyper-1.12.0/LICENSE"
       ],
@@ -528,6 +576,7 @@
       "version": "2.4.0",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/icu_collections-2.4.0/LICENSE"
       ],
@@ -538,6 +587,7 @@
       "version": "2.4.0",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/icu_locale_core-2.4.0/LICENSE"
       ],
@@ -548,6 +598,7 @@
       "version": "2.4.0",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/icu_normalizer_data-2.4.0/LICENSE"
       ],
@@ -558,6 +609,7 @@
       "version": "2.4.0",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/icu_normalizer-2.4.0/LICENSE"
       ],
@@ -568,6 +620,7 @@
       "version": "2.4.0",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/icu_properties_data-2.4.0/LICENSE"
       ],
@@ -578,6 +631,7 @@
       "version": "2.4.0",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/icu_properties-2.4.0/LICENSE"
       ],
@@ -588,6 +642,7 @@
       "version": "2.4.0",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/icu_provider-2.4.0/LICENSE"
       ],
@@ -598,6 +653,7 @@
       "version": "1.2.2",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/idna_adapter-1.2.2/LICENSE-APACHE",
         "rust/idna_adapter-1.2.2/LICENSE-MIT"
@@ -609,6 +665,7 @@
       "version": "1.1.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/idna-1.1.0/LICENSE-APACHE",
         "rust/idna-1.1.0/LICENSE-MIT"
@@ -620,6 +677,7 @@
       "version": "2.14.2",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/indexmap-2.14.2/LICENSE-APACHE",
         "rust/indexmap-2.14.2/LICENSE-MIT"
@@ -631,6 +689,7 @@
       "version": "2.12.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/ipnet-2.12.2/LICENSE-APACHE",
         "rust/ipnet-2.12.2/LICENSE-MIT"
@@ -642,6 +701,7 @@
       "version": "0.14.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/itertools-0.14.0/LICENSE-APACHE",
         "rust/itertools-0.14.0/LICENSE-MIT"
@@ -653,6 +713,7 @@
       "version": "1.0.18",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/itoa-1.0.18/LICENSE-APACHE",
         "rust/itoa-1.0.18/LICENSE-MIT"
@@ -664,6 +725,7 @@
       "version": "0.2.191",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/libc-0.2.191/LICENSE-APACHE",
         "rust/libc-0.2.191/LICENSE-MIT"
@@ -675,6 +737,7 @@
       "version": "0.8.3",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/litemap-0.8.3/LICENSE"
       ],
@@ -685,6 +748,7 @@
       "version": "0.4.35",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/log-0.4.35/LICENSE-APACHE",
         "rust/log-0.4.35/LICENSE-MIT"
@@ -696,6 +760,7 @@
       "version": "0.1.3",
       "license": "MIT OR Apache-2.0 OR Zlib",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/lru-slab-0.1.3/LICENSE-APACHE",
         "rust/lru-slab-0.1.3/LICENSE-MIT",
@@ -708,6 +773,7 @@
       "version": "2.8.3",
       "license": "Unlicense OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/memchr-2.8.3/COPYING",
         "rust/memchr-2.8.3/LICENSE-MIT"
@@ -719,6 +785,7 @@
       "version": "1.2.4",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/mio-1.2.4/LICENSE"
       ],
@@ -729,6 +796,7 @@
       "version": "0.10.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/multimap-0.10.1/LICENSE-APACHE",
         "rust/multimap-0.10.1/LICENSE-MIT"
@@ -740,6 +808,7 @@
       "version": "2.6.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/napi-build-2.6.0/LICENSE"
       ],
@@ -751,6 +820,7 @@
       "version": "1.0.75",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/napi-derive-backend-1.0.75/LICENSE"
       ],
@@ -762,6 +832,7 @@
       "version": "2.16.13",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/napi-derive-2.16.13/LICENSE"
       ],
@@ -773,6 +844,7 @@
       "version": "2.4.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/napi-sys-2.4.0/LICENSE"
       ],
@@ -784,6 +856,7 @@
       "version": "2.16.17",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/napi-2.16.17/LICENSE"
       ],
@@ -795,6 +868,7 @@
       "version": "1.21.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/once_cell-1.21.4/LICENSE-APACHE",
         "rust/once_cell-1.21.4/LICENSE-MIT"
@@ -806,6 +880,7 @@
       "version": "2.3.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/percent-encoding-2.3.2/LICENSE-APACHE",
         "rust/percent-encoding-2.3.2/LICENSE-MIT"
@@ -817,6 +892,7 @@
       "version": "0.7.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/petgraph-0.7.1/LICENSE-APACHE",
         "rust/petgraph-0.7.1/LICENSE-MIT",
@@ -829,6 +905,7 @@
       "version": "0.2.17",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/pin-project-lite-0.2.17/LICENSE-APACHE",
         "rust/pin-project-lite-0.2.17/LICENSE-MIT"
@@ -840,6 +917,7 @@
       "version": "0.1.6",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/potential_utf-0.1.6/LICENSE"
       ],
@@ -850,6 +928,7 @@
       "version": "0.2.37",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/prettyplease-0.2.37/LICENSE-APACHE",
         "rust/prettyplease-0.2.37/LICENSE-MIT"
@@ -861,6 +940,7 @@
       "version": "1.0.107",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/proc-macro2-1.0.107/LICENSE-APACHE",
         "rust/proc-macro2-1.0.107/LICENSE-MIT"
@@ -872,6 +952,7 @@
       "version": "0.13.5",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/prost-build-0.13.5/LICENSE"
       ],
@@ -882,6 +963,7 @@
       "version": "0.13.5",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/prost-derive-0.13.5/LICENSE"
       ],
@@ -892,6 +974,7 @@
       "version": "0.13.5",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/prost-types-0.13.5/LICENSE"
       ],
@@ -902,6 +985,7 @@
       "version": "0.13.5",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/prost-0.13.5/LICENSE"
       ],
@@ -912,6 +996,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -920,6 +1005,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -928,6 +1014,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -936,6 +1023,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -944,6 +1032,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -952,6 +1041,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -960,6 +1050,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -968,6 +1059,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -976,6 +1068,7 @@
       "version": "3.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [],
       "noticeStatus": "SPDX metadata only; notice text missing, binary redistribution review required"
     },
@@ -984,6 +1077,7 @@
       "version": "0.11.19",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/quinn-proto-0.11.19/LICENSE-APACHE",
         "rust/quinn-proto-0.11.19/LICENSE-MIT"
@@ -995,6 +1089,7 @@
       "version": "0.5.16",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/quinn-udp-0.5.16/LICENSE-APACHE",
         "rust/quinn-udp-0.5.16/LICENSE-MIT"
@@ -1006,6 +1101,7 @@
       "version": "0.11.12",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/quinn-0.11.12/LICENSE-APACHE",
         "rust/quinn-0.11.12/LICENSE-MIT"
@@ -1017,6 +1113,7 @@
       "version": "1.0.47",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/quote-1.0.47/LICENSE-APACHE",
         "rust/quote-1.0.47/LICENSE-MIT"
@@ -1028,6 +1125,7 @@
       "version": "0.10.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rand_core-0.10.1/COPYRIGHT",
         "rust/rand_core-0.10.1/LICENSE-APACHE",
@@ -1040,6 +1138,7 @@
       "version": "0.10.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rand_pcg-0.10.2/COPYRIGHT",
         "rust/rand_pcg-0.10.2/LICENSE-APACHE",
@@ -1052,6 +1151,7 @@
       "version": "0.10.3",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rand-0.10.3/COPYRIGHT",
         "rust/rand-0.10.3/LICENSE-APACHE",
@@ -1064,6 +1164,7 @@
       "version": "0.4.18",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/regex-automata-0.4.18/LICENSE-APACHE",
         "rust/regex-automata-0.4.18/LICENSE-MIT"
@@ -1075,6 +1176,7 @@
       "version": "0.8.11",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/regex-syntax-0.8.11/LICENSE-APACHE",
         "rust/regex-syntax-0.8.11/LICENSE-MIT",
@@ -1087,6 +1189,7 @@
       "version": "1.13.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/regex-1.13.1/LICENSE-APACHE",
         "rust/regex-1.13.1/LICENSE-MIT"
@@ -1098,6 +1201,7 @@
       "version": "0.12.28",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/reqwest-0.12.28/LICENSE-APACHE",
         "rust/reqwest-0.12.28/LICENSE-MIT"
@@ -1109,6 +1213,7 @@
       "version": "0.17.14",
       "license": "Apache-2.0 AND ISC",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/ring-0.17.14/LICENSE",
         "rust/ring-0.17.14/LICENSE-BoringSSL",
@@ -1124,6 +1229,7 @@
       "version": "2.1.3",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rustc-hash-2.1.3/LICENSE-APACHE",
         "rust/rustc-hash-2.1.3/LICENSE-MIT"
@@ -1135,6 +1241,7 @@
       "version": "1.1.6",
       "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/rustix-1.1.6/COPYRIGHT",
         "rust/rustix-1.1.6/LICENSE-APACHE",
@@ -1148,6 +1255,7 @@
       "version": "0.8.5",
       "license": "Apache-2.0 OR ISC OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rustls-native-certs-0.8.5/LICENSE",
         "rust/rustls-native-certs-0.8.5/LICENSE-APACHE",
@@ -1161,6 +1269,7 @@
       "version": "1.15.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rustls-pki-types-1.15.1/LICENSE-APACHE",
         "rust/rustls-pki-types-1.15.1/LICENSE-MIT"
@@ -1172,6 +1281,7 @@
       "version": "0.103.16",
       "license": "ISC",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rustls-webpki-0.103.16/LICENSE"
       ],
@@ -1182,6 +1292,7 @@
       "version": "0.23.46",
       "license": "Apache-2.0 OR ISC OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/rustls-0.23.46/LICENSE-APACHE",
         "rust/rustls-0.23.46/LICENSE-ISC",
@@ -1194,6 +1305,7 @@
       "version": "1.0.23",
       "license": "Apache-2.0 OR BSL-1.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/ryu-1.0.23/LICENSE-APACHE",
         "rust/ryu-1.0.23/LICENSE-BOOST"
@@ -1205,6 +1317,7 @@
       "version": "2.17.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/security-framework-sys-2.17.0/LICENSE-APACHE",
         "rust/security-framework-sys-2.17.0/LICENSE-MIT"
@@ -1216,6 +1329,7 @@
       "version": "3.7.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/security-framework-3.7.0/LICENSE-APACHE",
         "rust/security-framework-3.7.0/LICENSE-MIT"
@@ -1227,6 +1341,7 @@
       "version": "1.0.28",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/semver-1.0.28/LICENSE-APACHE",
         "rust/semver-1.0.28/LICENSE-MIT"
@@ -1238,6 +1353,7 @@
       "version": "1.0.229",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/serde_core-1.0.229/LICENSE-APACHE",
         "rust/serde_core-1.0.229/LICENSE-MIT"
@@ -1249,6 +1365,7 @@
       "version": "1.0.229",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/serde_derive-1.0.229/LICENSE-APACHE",
         "rust/serde_derive-1.0.229/LICENSE-MIT"
@@ -1260,6 +1377,7 @@
       "version": "1.0.154",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/serde_json-1.0.154/LICENSE-APACHE",
         "rust/serde_json-1.0.154/LICENSE-MIT"
@@ -1271,6 +1389,7 @@
       "version": "0.7.1",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/serde_urlencoded-0.7.1/LICENSE-APACHE",
         "rust/serde_urlencoded-0.7.1/LICENSE-MIT"
@@ -1282,6 +1401,7 @@
       "version": "1.0.229",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/serde-1.0.229/LICENSE-APACHE",
         "rust/serde-1.0.229/LICENSE-MIT"
@@ -1293,6 +1413,7 @@
       "version": "0.10.9",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/sha2-0.10.9/LICENSE-APACHE",
         "rust/sha2-0.10.9/LICENSE-MIT"
@@ -1304,6 +1425,7 @@
       "version": "2.0.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/shlex-2.0.1/LICENSE-APACHE",
         "rust/shlex-2.0.1/LICENSE-MIT"
@@ -1315,6 +1437,7 @@
       "version": "0.4.12",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/slab-0.4.12/LICENSE"
       ],
@@ -1325,6 +1448,7 @@
       "version": "1.16.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/smallvec-1.16.4/LICENSE-APACHE",
         "rust/smallvec-1.16.4/LICENSE-MIT"
@@ -1336,6 +1460,7 @@
       "version": "0.6.5",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/socket2-0.6.5/LICENSE-APACHE",
         "rust/socket2-0.6.5/LICENSE-MIT"
@@ -1347,6 +1472,7 @@
       "version": "1.2.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/stable_deref_trait-1.2.1/LICENSE-APACHE",
         "rust/stable_deref_trait-1.2.1/LICENSE-MIT"
@@ -1358,6 +1484,7 @@
       "version": "2.6.1",
       "license": "BSD-3-Clause",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/subtle-2.6.1/LICENSE"
       ],
@@ -1368,6 +1495,7 @@
       "version": "2.0.119",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/syn-2.0.119/LICENSE-APACHE",
         "rust/syn-2.0.119/LICENSE-MIT"
@@ -1379,6 +1507,7 @@
       "version": "3.0.9",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/syn-3.0.9/LICENSE-APACHE",
         "rust/syn-3.0.9/LICENSE-MIT"
@@ -1390,6 +1519,7 @@
       "version": "1.0.2",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/sync_wrapper-1.0.2/LICENSE"
       ],
@@ -1400,6 +1530,7 @@
       "version": "0.14.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/synstructure-0.14.0/LICENSE"
       ],
@@ -1410,6 +1541,7 @@
       "version": "3.27.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/tempfile-3.27.0/LICENSE-APACHE",
         "rust/tempfile-3.27.0/LICENSE-MIT"
@@ -1421,6 +1553,7 @@
       "version": "2.0.21",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/thiserror-impl-2.0.21/LICENSE-APACHE",
         "rust/thiserror-impl-2.0.21/LICENSE-MIT"
@@ -1432,6 +1565,7 @@
       "version": "2.0.21",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/thiserror-2.0.21/LICENSE-APACHE",
         "rust/thiserror-2.0.21/LICENSE-MIT"
@@ -1443,6 +1577,7 @@
       "version": "0.8.5",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tinystr-0.8.5/LICENSE"
       ],
@@ -1453,6 +1588,7 @@
       "version": "1.13.3",
       "license": "Zlib OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tinyvec-1.13.3/LICENSE-APACHE.md",
         "rust/tinyvec-1.13.3/LICENSE-MIT.md",
@@ -1465,6 +1601,7 @@
       "version": "2.7.2",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tokio-macros-2.7.2/LICENSE"
       ],
@@ -1475,6 +1612,7 @@
       "version": "0.26.6",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tokio-rustls-0.26.6/LICENSE-APACHE",
         "rust/tokio-rustls-0.26.6/LICENSE-MIT"
@@ -1486,6 +1624,7 @@
       "version": "0.1.19",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tokio-stream-0.1.19/LICENSE"
       ],
@@ -1496,6 +1635,7 @@
       "version": "0.7.20",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tokio-util-0.7.20/LICENSE"
       ],
@@ -1506,6 +1646,7 @@
       "version": "1.54.1",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tokio-1.54.1/LICENSE"
       ],
@@ -1516,6 +1657,7 @@
       "version": "0.6.11",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tower-http-0.6.11/LICENSE"
       ],
@@ -1526,6 +1668,7 @@
       "version": "0.3.3",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tower-layer-0.3.3/LICENSE"
       ],
@@ -1536,6 +1679,7 @@
       "version": "0.3.3",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tower-service-0.3.3/LICENSE"
       ],
@@ -1546,6 +1690,7 @@
       "version": "0.5.3",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tower-0.5.3/LICENSE"
       ],
@@ -1556,6 +1701,7 @@
       "version": "0.1.36",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tracing-core-0.1.36/LICENSE",
         "rust/tracing-core-0.1.36/src/spin/LICENSE"
@@ -1567,6 +1713,7 @@
       "version": "0.1.44",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/tracing-0.1.44/LICENSE"
       ],
@@ -1577,6 +1724,7 @@
       "version": "0.2.5",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/try-lock-0.2.5/LICENSE"
       ],
@@ -1587,6 +1735,7 @@
       "version": "1.20.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/typenum-1.20.1/LICENSE",
         "rust/typenum-1.20.1/LICENSE-APACHE",
@@ -1599,6 +1748,7 @@
       "version": "1.0.27",
       "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/unicode-ident-1.0.27/LICENSE-APACHE",
         "rust/unicode-ident-1.0.27/LICENSE-MIT",
@@ -1611,6 +1761,7 @@
       "version": "1.13.3",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/unicode-segmentation-1.13.3/COPYRIGHT",
         "rust/unicode-segmentation-1.13.3/LICENSE-APACHE",
@@ -1623,6 +1774,7 @@
       "version": "0.9.0",
       "license": "ISC",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/untrusted-0.9.0/LICENSE.txt"
       ],
@@ -1633,6 +1785,7 @@
       "version": "2.5.8",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/url-2.5.8/LICENSE-APACHE",
         "rust/url-2.5.8/LICENSE-MIT"
@@ -1644,6 +1797,7 @@
       "version": "1.0.0",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/utf_types-1.0.0/COPYRIGHT",
         "rust/utf_types-1.0.0/LICENSE-APACHE",
@@ -1656,6 +1810,7 @@
       "version": "1.1.0",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/utf8_iter-1.1.0/COPYRIGHT",
         "rust/utf8_iter-1.1.0/LICENSE-APACHE",
@@ -1668,6 +1823,7 @@
       "version": "1.29.0",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/uuid-1.29.0/LICENSE-APACHE",
         "rust/uuid-1.29.0/LICENSE-MIT"
@@ -1679,6 +1835,7 @@
       "version": "0.9.5",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "build-or-test",
       "notices": [
         "rust/version_check-0.9.5/LICENSE-APACHE",
         "rust/version_check-0.9.5/LICENSE-MIT"
@@ -1690,6 +1847,7 @@
       "version": "0.3.2",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/want-0.3.2/LICENSE"
       ],
@@ -1700,6 +1858,7 @@
       "version": "0.6.4",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/writeable-0.6.4/LICENSE"
       ],
@@ -1710,6 +1869,7 @@
       "version": "0.8.4",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/yoke-derive-0.8.4/LICENSE"
       ],
@@ -1720,6 +1880,7 @@
       "version": "0.8.4",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/yoke-0.8.4/LICENSE"
       ],
@@ -1730,6 +1891,7 @@
       "version": "0.1.8",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/zerofrom-derive-0.1.8/LICENSE"
       ],
@@ -1740,6 +1902,7 @@
       "version": "0.1.8",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/zerofrom-0.1.8/LICENSE"
       ],
@@ -1750,6 +1913,7 @@
       "version": "1.9.1",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/zeroize-1.9.1/LICENSE-APACHE",
         "rust/zeroize-1.9.1/LICENSE-MIT"
@@ -1761,6 +1925,7 @@
       "version": "0.2.5",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/zerotrie-0.2.5/LICENSE"
       ],
@@ -1771,6 +1936,7 @@
       "version": "0.11.7",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/zerovec-derive-0.11.7/LICENSE"
       ],
@@ -1781,6 +1947,7 @@
       "version": "0.11.9",
       "license": "Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/zerovec-0.11.9/LICENSE"
       ],
@@ -1791,6 +1958,7 @@
       "version": "1.0.23",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "dependencyScope": "normal",
       "notices": [
         "rust/zmij-1.0.23/LICENSE-MIT"
       ],

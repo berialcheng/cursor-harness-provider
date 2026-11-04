@@ -9,7 +9,10 @@
     "./model": "./dist/model.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses"
   ],
   "dependencies": {
     "@cursor-native/native": "0.3.0"

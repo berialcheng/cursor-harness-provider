@@ -15,6 +15,7 @@ Upstream license/copyright/notice files are retained under `licenses/rust`.
 NAPI crates missing license text in their published crate archives use exact-vcs-commit upstream notices, with origins in `licenses/upstream-notices.json`.
 The remaining protoc-bin-vendored family is build tooling, not shipped in the .node module; its SPDX metadata is recorded, and notice-text gaps are explicitly marked.
 No blanket legal-compliance certification is claimed. Re-run `npm run licenses` on every target before distributing a native release.
+The inventory now classifies Cargo's conservative normal dependency closure separately from build/test-only dependencies and inactive target/optional entries. `npm run build` also assembles self-contained workspace license copies; `npm run check` verifies their actual tarballs. Missing normal-dependency texts fail preparation; the known protoc build-tool gaps remain explicitly listed and are not declared resolved.
 
 ## Host SDKs
 Pi libraries are external, host-provided peer dependencies, not bundled copies.
