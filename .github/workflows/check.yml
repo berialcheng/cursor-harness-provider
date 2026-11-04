@@ -31,7 +31,11 @@ jobs:
         with:
           workspaces: ". -> ${{ runner.temp }}/cursor-native-target"
       - run: npm ci --ignore-scripts --legacy-peer-deps
-      - run: npm install --global --ignore-scripts --legacy-peer-deps @opencode/cli@2.2.5
+      - name: Install and verify OpenCode host
+        # Its postinstall links the pinned platform binary; workspace scripts stay disabled.
+        run: |
+          npm install --global --legacy-peer-deps @opencode/cli@2.2.5
+          opencode --version
       - run: npm run check
       - run: npm run licenses
       - run: npm run audit:source
