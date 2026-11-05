@@ -1,6 +1,6 @@
 /** The only registry-writing path: OIDC staging, never final publication or approval. */
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseSource, verifyBundle } from "./release.mjs";
@@ -76,7 +76,11 @@ export function stageRelease({ projectRoot = defaultRoot, bundleDirectory, versi
   });
   const audit = { schemaVersion: 1, outcome: "refused", repository, version, commit: env.GITHUB_SHA,
     runId: env.GITHUB_RUN_ID, runAttempt: env.GITHUB_RUN_ATTEMPT, packages };
-  const config = ["--userconfig", "/dev/null", "--globalconfig", "/dev/null", "--fetch-retries", "0",
+  const configDirectory = mkdtempSync(join(env.RUNNER_TEMP, "stage-npm-config-"));
+  const userConfig = join(configDirectory, "user.npmrc"), globalConfig = join(configDirectory, "global.npmrc");
+  writeFileSync(userConfig, "", { flag: "wx", mode: 0o600 });
+  writeFileSync(globalConfig, "", { flag: "wx", mode: 0o600 });
+  const config = ["--userconfig", userConfig, "--globalconfig", globalConfig, "--fetch-retries", "0",
     "--cache", join(env.RUNNER_TEMP, "stage-npm-cache"), "--no-update-notifier"];
   const run = args => execute(process.execPath, [npmCli, ...args], {
     cwd: bundleDirectory, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],

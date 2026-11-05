@@ -184,12 +184,10 @@ jobs:
           name: release-preflight-bundle
           path: ${{ runner.temp }}/bundle/
       - name: Install isolated, pinned staging CLI (no lifecycle scripts)
-        run: >-
-          npm install --prefix "$RUNNER_TEMP/stage-cli" npm@11.21.0
-          --ignore-scripts --no-package-lock --no-audit --no-fund
-          --registry https://registry.npmjs.org/
-          --userconfig /dev/null --globalconfig /dev/null
-          --cache "$RUNNER_TEMP/stage-cli-cache"
+        run: |
+          umask 077
+          touch "$RUNNER_TEMP/stage-installer.npmrc"
+          npm install --prefix "$RUNNER_TEMP/stage-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/stage-installer.npmrc" --globalconfig /dev/null --cache "$RUNNER_TEMP/stage-cli-cache"
       - name: Verify same-run bundle and stage native, then host adapters
         env:
           STAGE_NPM: ${{ inputs.stage_npm }}

@@ -32,7 +32,7 @@ jobs:
           umask 077
           mkdir -p "$RUNNER_TEMP/npm-bootstrap-session"
           touch "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc"
-          npm install --prefix "$RUNNER_TEMP/bootstrap-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig /dev/null --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache"
+          npm install --prefix "$RUNNER_TEMP/bootstrap-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc" --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache"
       - name: Owner web login — open the npm login URL and confirm in browser
         timeout-minutes: 8
         run: >-

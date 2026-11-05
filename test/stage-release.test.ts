@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 // @ts-expect-error Build tooling is intentionally JavaScript.
@@ -32,6 +33,20 @@ describe("OIDC stage-only release",()=>{
     expect(f.execute.mock.calls.slice(1).map(call=>call[1].slice(1,4))).toEqual(["native","pi","opencode"].map(kind=>["stage","publish",join(f.directory,kind+".tgz")]));
     expect(JSON.stringify(result)).not.toContain("synthetic-present");
     expect(f.execute.mock.invocationCallOrder[0]).toBeGreaterThan(f.verify.mock.invocationCallOrder[0]);
+  });
+  it("loads distinct empty configs with the real provisioned npm CLI without network/auth",()=>{
+    const f=fixture(),cli=process.env.npm_execpath;
+    if(!cli)throw Error("Run tests through npm to select the existing CLI");
+    let checked=false;
+    f.execute.mockImplementation((binary,args):string=>{
+      if(args[1]==="--version"){
+        expect(args[args.indexOf("--userconfig")+1]).not.toBe(args[args.indexOf("--globalconfig")+1]);
+        const output=execFileSync(binary,[cli,...args.slice(1)],{cwd:f.directory,encoding:"utf8",env:{HOME:f.directory,PATH:dirname(process.execPath)+":/usr/bin:/bin"},timeout:10000});
+        expect(output.trim()).toMatch(/^[0-9]+[.][0-9]+[.][0-9]+$/);checked=true;return"11.21.0";
+      }
+      return"synthetic staged";
+    });
+    stageRelease(f.options,f);expect(checked).toBe(true);
   });
   it("refuses non-dispatch, non-main and missing OIDC before any upload",()=>{
     for(const change of [{GITHUB_EVENT_NAME:"push"},{GITHUB_REF:"refs/heads/feature"},{STAGE_NPM:"false"},{GITHUB_REPOSITORY:"other/repository"}]){
@@ -64,6 +79,7 @@ describe("one-time owner-authenticated placeholder bootstrap",()=>{
   it("keeps interactive login isolated and always attempts logout and local cleanup",()=>{
     const root=fileURLToPath(new URL("../",import.meta.url)),w=YAML.parse(readFileSync(join(root,".github/workflows/npm-bootstrap.yml"),"utf8"));
     expect(w.permissions).toEqual({contents:"read"});expect(w.on.push).toBeUndefined();
+    expect(JSON.stringify(w)).not.toContain("--userconfig /dev/null --globalconfig /dev/null");
     expect(w.jobs.bootstrap.environment).toBe("npm-release");expect(w.jobs.bootstrap.permissions).toBeUndefined();
     expect(w.jobs.bootstrap.if).toContain("refs/heads/main");
     const steps=w.jobs.bootstrap.steps;expect(steps.find((s:{name:string})=>s.name==="Revoke temporary npm owner login").if).toContain("always()");

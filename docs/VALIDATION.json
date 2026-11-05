@@ -18,7 +18,7 @@
   },
   "checks": {
     "rustTests": 73,
-    "javascriptAndHostTests": 256,
+    "javascriptAndHostTests": 257,
     "jsTestFiles": 28,
     "typecheck": true,
     "rustfmt": true,
