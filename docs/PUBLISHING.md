@@ -55,6 +55,8 @@ The workflow is named **release preflight (no publish)**. It runs on selected so
   -> verify exactly those merged archives on all 3 native hosts
 ```
 
+Superseded main-branch preflights are cancelled automatically; this is safe only while the workflow has no registry writes and must be reconsidered before adding staging.
+
 It has only `contents: read`: no npm token, no OIDC write permission, no staging/publish/login command and no environment or registry mutation. Actions are pinned to official tag commits resolved during preparation; this is not a full audit of those actions. Release dependency/build caches are not restored. Checkout credentials are not persisted.
 
 Each exported part binds its Git commit, npm/Cargo lock hashes, workflow run and attempt, target, and archive checksums. Dirty source is refused in CI except the regenerated target inventory. Aggregation rejects missing/duplicate targets, mixed identities, platform-dependent common JS/metadata, corrupt binaries/notices and missing host-test evidence.

@@ -100,7 +100,8 @@ describe("release preflight aggregation",()=>{
       writeFileSync(join(output,"pi.tgz"),"corrupted");
       expect(()=>verifyBundle({projectRoot:f.root,bundleDirectory:output,localOnly:true})).toThrow(/checksum\/identity/);
     }finally{vi.unstubAllEnvs();}
-  },20000);
+  // Several offline npm/Python subprocesses take longer on hosted Intel Macs.
+  },90000);
   it("rejects missing and duplicate targets",()=>{
     const f=fixture();
     expect(()=>mergePackageTrees({projectRoot:f.root,...f,inputs:f.inputs.slice(0,1)})).toThrow(/Missing\/duplicate/);
@@ -197,6 +198,7 @@ describe("no-publish workflow policy",()=>{
   it("pins actions and gates merged-package tests without registry credentials",()=>{
     const root=fileURLToPath(new URL("../",import.meta.url)),text=readFileSync(join(root,".github/workflows/publish.yml"),"utf8"),w=YAML.parse(text);
     expect(w.permissions).toEqual({contents:"read"});
+    expect(w.concurrency["cancel-in-progress"]).toBe(true);
     expect(w.on.workflow_dispatch).toBeDefined();expect(w.on.push.branches).toEqual(["main"]);expect(w.on.push.tags).toBeUndefined();
     expect(w.jobs.aggregate.needs).toBe("build");expect(w.jobs["verify-packed"].needs).toBe("aggregate");
     const policy=JSON.parse(readFileSync(join(root,"release.config.json"),"utf8"));
