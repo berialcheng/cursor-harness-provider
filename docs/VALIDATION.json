@@ -18,8 +18,8 @@
   },
   "checks": {
     "rustTests": 73,
-    "javascriptAndHostTests": 239,
-    "jsTestFiles": 26,
+    "javascriptAndHostTests": 243,
+    "jsTestFiles": 27,
     "typecheck": true,
     "rustfmt": true,
     "clippyDenyWarnings": true,

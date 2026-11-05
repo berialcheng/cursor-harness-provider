@@ -1,14 +1,29 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { accessSync, constants, existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const root = realpathSync(fileURLToPath(new URL("../", import.meta.url)));
 const cargoBin = join(resolve(process.env.CARGO_HOME || join(homedir(), ".cargo")), "bin");
-export const cargo = join(cargoBin, process.platform === "win32" ? "cargo.exe" : "cargo");
-const rustc = join(cargoBin, process.platform === "win32" ? "rustc.exe" : "rustc");
+export function findExistingRustTool(name, preferredBin = cargoBin, searchPath = process.env.PATH || "") {
+  const executable = name + (process.platform === "win32" ? ".exe" : "");
+  for (const directory of [preferredBin, ...searchPath.split(delimiter)]) {
+    if (!directory || !isAbsolute(directory)) continue;
+    const candidate = join(directory, executable);
+    try {
+      accessSync(candidate, constants.X_OK);
+      // Keep the proxy basename: resolving cargo -> rustup changes argv[0].
+      if (statSync(candidate).isFile()) return candidate;
+    } catch { /* Only existing executables qualify; never download tooling. */ }
+  }
+  return undefined;
+}
+// Keep imports usable for Node-only preflight; actual Rust commands validate
+// availability in run(). Hosted images may put proxies outside ~/.cargo/bin.
+export const cargo = findExistingRustTool("cargo") || join(cargoBin, "cargo");
+const rustc = findExistingRustTool("rustc") || join(cargoBin, "rustc");
 const cacheKey = path => createHash("sha256").update(path).digest("hex").slice(0, 16);
 // CARGO_TARGET_DIR can explicitly reuse an existing cache after a checkout move.
 // The default is project-local in identity, but stays outside the watched source.
