@@ -41,7 +41,7 @@ function fixture() {
   put("crates/fixture/Cargo.toml", '[package]\nname = "fixture"\n');
   const dependency={name:"fixture-lib",version:"1.0.0",source:"registry+https://github.com/rust-lang/crates.io-index",license:"MIT",dependencyScope:"normal",notices:["rust/fixture-lib-1.0.0/LICENSE"]};
   put("licenses/locked-target-dependencies.json",{schemaVersion:1,sourceBinding:lockedSourceBinding(root),
-    targets:Object.fromEntries(platforms.map(item=>[item.target,dependencyRecords([dependency])]))});
+    targets:Object.fromEntries(platforms.map(item=>[item.target,dependencyRecords([dependency]).map((dep: { name: string; version: string })=>({...dep,notices:[{path:dependency.notices[0],sha256:sha256(Buffer.from("MIT License\nDependency fixture\n"))}]}))]))});
   put("LICENSE","MIT License\nProject fixture\n");put("vendor/pi-cursor/LICENSE","MIT License\nUpstream fixture\n");
   put("licenses/upstream-notices.json",{});
   put("licenses/rust/fixture-lib-1.0.0/LICENSE","MIT License\nDependency fixture\n");

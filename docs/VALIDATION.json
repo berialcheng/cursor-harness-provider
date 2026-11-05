@@ -18,7 +18,7 @@
   },
   "checks": {
     "rustTests": 73,
-    "javascriptAndHostTests": 243,
+    "javascriptAndHostTests": 245,
     "jsTestFiles": 27,
     "typecheck": true,
     "rustfmt": true,
@@ -102,7 +102,7 @@
       "x86_64-apple-darwin": 169,
       "x86_64-unknown-linux-gnu": 167
     },
-    "reviewFollowups": "PAX total-byte budget and independent locked dependency membership fixed with regressions; not a full audit",
+    "reviewFollowups": "PAX total-byte budget, independent locked dependency membership and per-dependency notice path/content bindings fixed with regressions; not a full audit",
     "realThreeTargetMatrixVerified": false,
     "workflow": "publish.yml: preflight only, contents read",
     "registryWritesPerformed": false,

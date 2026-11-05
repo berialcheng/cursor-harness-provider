@@ -88,10 +88,42 @@ export function lockedTargetDependencies(projectRoot, target) {
   }
   const dependencies = reference.targets?.[target];
   if (!Array.isArray(dependencies) || !dependencies.length) throw new Error("Missing locked target dependency set: " + target);
-  return dependencyRecords(dependencies);
+  dependencyRecords(dependencies);
+  for (const dep of dependencies) {
+    if (!Array.isArray(dep.notices) || (!dep.notices.length &&
+        !(dep.dependencyScope === "build-or-test" && /^protoc-bin-vendored(?:-|$)/.test(dep.name)))) throw new Error("Missing trusted notice bindings");
+    const paths = new Set();
+    for (const file of dep.notices) {
+      safeParts(file.path);
+      if (!file.path.startsWith("rust/" + dep.name + "-" + dep.version + "/") ||
+          paths.has(file.path) || !/^[a-f0-9]{64}$/.test(file.sha256) ||
+          sha256(readNotice(join(projectRoot, "licenses"), file.path)) !== file.sha256) {
+        throw new Error("Invalid trusted Rust notice binding");
+      }
+      paths.add(file.path);
+    }
+  }
+  return dependencies;
 }
 export function assertLockedDependencies(projectRoot, target, dependencies) {
-  if (JSON.stringify(dependencyRecords(dependencies)) !== JSON.stringify(lockedTargetDependencies(projectRoot, target))) {
+  if (JSON.stringify(dependencyRecords(dependencies)) !== JSON.stringify(dependencyRecords(lockedTargetDependencies(projectRoot, target)))) {
     throw new Error("Rust inventory differs from locked target dependency set: " + target);
+  }
+}
+export function assertLockedNotices(projectRoot, target, dependencies, directory) {
+  const expected = lockedTargetDependencies(projectRoot, target);
+  if (JSON.stringify(dependencyRecords(dependencies)) !== JSON.stringify(dependencyRecords(expected))) {
+    throw new Error("Rust inventory differs from locked target dependency set: " + target);
+  }
+  const key = dep => JSON.stringify([dep.name, dep.version, dep.source]);
+  const byIdentity = new Map(expected.map(dep => [key(dep), dep]));
+  for (const dep of dependencies) {
+    const notices = byIdentity.get(key(dep)).notices;
+    if (JSON.stringify([...dep.notices].sort()) !== JSON.stringify(notices.map(file => file.path).sort())) {
+      throw new Error("Rust notice path binding mismatch: " + dep.name);
+    }
+    for (const file of notices) {
+      if (sha256(readNotice(directory, file.path)) !== file.sha256) throw new Error("Rust notice content binding mismatch: " + file.path);
+    }
   }
 }

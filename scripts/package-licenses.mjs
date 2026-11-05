@@ -3,7 +3,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSyn
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { platformForTarget } from "./build-rust.mjs";
-import { assertLockedDependencies, readNotice, safeParts, sha256 } from "./license-inputs.mjs";
+import { assertLockedNotices, readNotice, safeParts, sha256 } from "./license-inputs.mjs";
 export { classifyDependencies, normalDependencyIds, readNotice, sha256 } from "./license-inputs.mjs";
 
 export const packageKinds = ["native", "pi", "opencode"];
@@ -36,7 +36,7 @@ export function preparePackageLicenses(projectRoot) {
   const inventoryBytes = readNotice(projectRoot, "licenses/rust-dependencies.json");
   const inventory = JSON.parse(inventoryBytes);
   const knownBuildToolGaps = validateInventory(inventory);
-  assertLockedDependencies(projectRoot, inventory.target, inventory.dependencies);
+  assertLockedNotices(projectRoot, inventory.target, inventory.dependencies, join(projectRoot, "licenses"));
   const platform = platformForTarget(inventory.target);
   if (nativeManifest.version !== project.version || !nativeManifest.artifacts?.[platform]) throw new Error("Native/license target or version mismatch");
   // A future multi-target aggregator must supply merged target-specific inventories.
@@ -130,7 +130,7 @@ function verifyLicenseTree(directory, distribution, version, own, upstream) {
 function verifyTargetInventory(directory, distribution, recorded, projectRoot) {
   const inventory = JSON.parse(readNotice(directory, "rust-dependencies.json"));
   const gaps = validateInventory(inventory), platform = platformForTarget(inventory.target);
-  assertLockedDependencies(projectRoot, inventory.target, inventory.dependencies);
+  assertLockedNotices(projectRoot, inventory.target, inventory.dependencies, directory);
   if (distribution.target !== inventory.target || distribution.platform !== platform ||
       JSON.stringify(distribution.knownBuildToolGaps) !== JSON.stringify(gaps)) throw new Error("Rust inventory coverage mismatch");
   for (const dep of inventory.dependencies) for (const path of dep.notices) {

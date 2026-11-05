@@ -24,9 +24,12 @@ function fixture() {
   put("Cargo.toml", "[workspace]\nmembers = [\"crates/fixture\"]\n");
   put("crates/fixture/Cargo.toml", "[package]\nname = \"fixture\"\n");
   const reference = () => put("licenses/locked-target-dependencies.json", {
-    schemaVersion: 1, sourceBinding: lockedSourceBinding(root), targets: { [inventory.target]: dependencyRecords(inventory.dependencies) },
+    schemaVersion: 1, sourceBinding: lockedSourceBinding(root), targets: { [inventory.target]: dependencyRecords(inventory.dependencies).map((record: { name: string; version: string }) => ({
+      ...record, notices: inventory.dependencies.find(dep => dep.name === record.name && dep.version === record.version)!.notices.map(path => ({
+        path, sha256: sha256(readFileSync(join(root, "licenses", path))),
+      })),
+    })) },
   });
-  reference();
   put("LICENSE", "MIT License\nCopyright project fixture\n");
   put("vendor/pi-cursor/LICENSE", "MIT License\nCopyright upstream fixture\n");
   put("licenses/rust-dependencies.json", inventory);
@@ -37,6 +40,7 @@ function fixture() {
     put("packages/" + kind + "/package.json", { version: "0.3.0", license: "MIT", private: true });
     put("packages/" + kind + "/THIRD_PARTY_NOTICES.md", "Original notice: licenses/pi-cursor/LICENSE\n");
   }
+  reference();
   return { root, put, inventory, manifest, dependency, reference };
 }
 function generate() {
@@ -135,6 +139,25 @@ describe("package license distribution", () => {
     manifest.files.find((file: { path: string }) => file.path === "rust-dependencies.json").sha256 = sha256(readFileSync(join(f.root, directory, "rust-dependencies.json")));
     f.put(directory + "distribution.json", manifest);
     expect(() => verifyPackagedLicenses(join(f.root, "packages/native"), "native", f.root)).toThrow(/locked target dependency set/);
+  });
+  it("rejects notice substitution while keeping every dependency and recomputing hashes", () => {
+    const f = generate(), directory = "packages/native/licenses/";
+    const inventory = JSON.parse(readFileSync(join(f.root, directory, "rust-dependencies.json"), "utf8"));
+    inventory.dependencies[0].notices = ["pi-cursor/LICENSE"]; f.put(directory + "rust-dependencies.json", inventory);
+    rmSync(join(f.root, directory, f.dependency.notices[0]));
+    const manifest = JSON.parse(readFileSync(join(f.root, directory, "distribution.json"), "utf8"));
+    manifest.files = manifest.files.filter((file: { path: string }) => file.path !== f.dependency.notices[0]);
+    manifest.files.find((file: { path: string }) => file.path === "rust-dependencies.json").sha256 = sha256(readFileSync(join(f.root, directory, "rust-dependencies.json")));
+    f.put(directory + "distribution.json", manifest);
+    expect(() => verifyPackagedLicenses(join(f.root, "packages/native"), "native", f.root)).toThrow(/Rust notice path binding mismatch/);
+  });
+  it("rejects rewritten notice contents despite a recomputed distribution hash", () => {
+    const f = generate(), directory = "packages/native/licenses/";
+    f.put(directory + f.dependency.notices[0], "Different license text\n");
+    const manifest = JSON.parse(readFileSync(join(f.root, directory, "distribution.json"), "utf8"));
+    manifest.files.find((file: { path: string }) => file.path === f.dependency.notices[0]).sha256 = sha256(readFileSync(join(f.root, directory, f.dependency.notices[0])));
+    f.put(directory + "distribution.json", manifest);
+    expect(() => verifyPackagedLicenses(join(f.root, "packages/native"), "native", f.root)).toThrow(/Rust notice content binding mismatch/);
   });
   it("rejects stale independent references after the Cargo lockfile changes", () => {
     const f = generate(); f.put("Cargo.lock", "Changed locked source\n");
