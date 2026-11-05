@@ -1,7 +1,19 @@
-# This workflow only prepares and verifies artifacts. It cannot write to npm.
-name: release preflight (no publish)
+# Pushes only verify artifacts. Explicit dispatch may stage them for human npm approval.
+# Trusted Publisher: publish.yml, environment npm-release, stage-only (configured in npm).
+name: release preflight and optional npm staging
 on:
   workflow_dispatch:
+    inputs:
+      stage_npm:
+        description: Stage verified tarballs in npm; human approval/2FA is still required
+        type: boolean
+        required: false
+        default: false
+      version:
+        description: Must exactly match the source and verified bundle version
+        type: string
+        required: true
+        default: "0.3.0"
   push:
     branches: [main]
     paths:
@@ -21,7 +33,7 @@ permissions:
   contents: read
 concurrency:
   group: release-preflight-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
     strategy:
@@ -149,3 +161,40 @@ jobs:
       - run: npm run release:verify -- --bundle "$RUNNER_TEMP/bundle"
       - name: Test exactly the merged tarballs, not workspace binaries
         run: npm run test:packages -- --archives "$RUNNER_TEMP/bundle"
+  stage-npm:
+    needs: [build, aggregate, verify-packed]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.stage_npm == true && needs.build.result == 'success' && needs.aggregate.result == 'success' && needs['verify-packed'].result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-preflight-bundle
+          path: ${{ runner.temp }}/bundle/
+      - name: Install isolated, pinned staging CLI (no lifecycle scripts)
+        run: >-
+          npm install --prefix "$RUNNER_TEMP/stage-cli" npm@11.21.0
+          --ignore-scripts --no-package-lock --no-audit --no-fund
+          --registry https://registry.npmjs.org/
+          --userconfig /dev/null --globalconfig /dev/null
+          --cache "$RUNNER_TEMP/stage-cli-cache"
+      - name: Verify same-run bundle and stage native, then host adapters
+        env:
+          STAGE_NPM: ${{ inputs.stage_npm }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: >-
+          node scripts/stage-release.mjs --bundle "$RUNNER_TEMP/bundle"
+          --version "$RELEASE_VERSION"
+          --npm-cli "$RUNNER_TEMP/stage-cli/node_modules/npm/bin/npm-cli.js"

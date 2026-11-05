@@ -13,7 +13,7 @@ Not affiliated with or endorsed by Cursor/Anysphere. Use only an account you are
 **0.3.0, experimental.** Locally validated on macOS arm64 with Node22.22, Rust1.99.1, Pi1.4/1.5 and OpenCode2.2.5/Bun.
 This source migration was verified against local mock Cursor HTTP/2 in the real hosts. It is not a fresh live-service certification of every model or feature.
 The earlier single-host Rust implementation had live Auto text/tool smoke tests; do not confuse those with full dual-host acceptance.
-Source is hosted on [GitHub](https://github.com/berialcheng/cursor-harness-provider). See [Actions](https://github.com/berialcheng/cursor-harness-provider/actions) for current remote CI results; local validation is not proof of a successful remote run. No npm package or binary release has been published.
+Source is hosted on [GitHub](https://github.com/berialcheng/cursor-harness-provider). See [Actions](https://github.com/berialcheng/cursor-harness-provider/actions) for current remote CI results; local validation is not proof of a successful remote run. Setup placeholders are not provider releases; see the registry and staged-release workflow for the current publication state.
 
 ## Layout
 
@@ -86,7 +86,7 @@ No performance, quota, cache savings or billing superiority is claimed.
 
 ## Package releases
 
-npm releases are not enabled. The [release-preparation guide](docs/PUBLISHING.md) describes the implemented, read-only `publish.yml` preflight: native-host builds, per-target license/binary aggregation and verification of the exact merged tarballs. It has no staging/publish commands or registry-write credentials. It produces CI artifacts only; authenticated npm setup, version tags and publishing still require separate authorization.
+The [release guide](docs/PUBLISHING.md) describes `publish.yml`: native-host builds, per-target license/binary aggregation and verification of the exact merged tarballs. Pushes are preflight-only; an explicit main-branch dispatch can stage the verified bundle through OIDC after protected-environment approval. npm maintainer 2FA approval is still required to make versions live. The separate one-time bootstrap workflow creates only metadata setup candidates and public placeholders, never a usable provider release. Installed-plugin changes remain separately authorized.
 
 ## Provenance
 

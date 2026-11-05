@@ -1,0 +1,60 @@
+# One-time namespace setup via owner web login; no real release or long-lived secret.
+name: one-time npm package bootstrap
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type create-three-public-package-placeholders; tiny bootstrap candidates must never be approved
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: npm-owner-bootstrap
+  cancel-in-progress: false
+jobs:
+  bootstrap:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirmation == 'create-three-public-package-placeholders' }}
+    runs-on: ubuntu-22.04
+    environment: npm-release
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - name: Install pinned CLI and create private temporary owner session
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/npm-bootstrap-session"
+          touch "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc"
+          npm install --prefix "$RUNNER_TEMP/bootstrap-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig /dev/null --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache"
+      - name: Owner web login — open the npm login URL and confirm in browser
+        timeout-minutes: 8
+        run: >-
+          node "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js" login
+          --auth-type=web --browser=false --registry=https://registry.npmjs.org/
+          --userconfig "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc"
+          --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache"
+          --fetch-retries=0
+      - name: Verify owner and stage only metadata setup candidates
+        env:
+          BOOTSTRAP_NPM: ${{ inputs.confirmation }}
+        run: >-
+          node scripts/bootstrap-npm.mjs
+          "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js"
+          "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc"
+          "$RUNNER_TEMP/npm-bootstrap-candidates"
+      - name: Revoke temporary npm owner login
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js" ]; then
+            node "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js" logout --registry=https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc" --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache" --fetch-retries=0
+          fi
+      - name: Remove only the runner-created session directory
+        if: ${{ always() }}
+        run: rm -rf -- "$RUNNER_TEMP/npm-bootstrap-session"

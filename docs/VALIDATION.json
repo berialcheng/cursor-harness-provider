@@ -18,8 +18,8 @@
   },
   "checks": {
     "rustTests": 73,
-    "javascriptAndHostTests": 245,
-    "jsTestFiles": 27,
+    "javascriptAndHostTests": 256,
+    "jsTestFiles": 28,
     "typecheck": true,
     "rustfmt": true,
     "clippyDenyWarnings": true,
@@ -104,7 +104,9 @@
     },
     "reviewFollowups": "PAX total-byte budget, independent locked dependency membership and per-dependency notice path/content bindings fixed with regressions; not a full audit",
     "realThreeTargetMatrixVerified": false,
-    "workflow": "publish.yml: preflight only, contents read",
+    "workflow": "publish.yml: default preflight; explicit main dispatch stage-only OIDC after all same-run gates",
+    "verifiedHistoricalPreflight": {"commit": "2a9d175e15829a72a3e1f35dc4b6d2eaa05a2309", "run": "41992048529", "jobsSucceeded": 7},
+    "bootstrapWorkflow": "npm-bootstrap.yml: protected interactive owner web login; metadata candidates only",
     "registryWritesPerformed": false,
     "credentialsOrInstalledPluginsChanged": false
   },

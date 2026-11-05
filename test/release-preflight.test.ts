@@ -194,21 +194,27 @@ describe("safe build-time tarball handling",()=>{
     for(const command of ["publish","stage","login","access"])expect(()=>npm.run([command],base)).toThrow(/Only offline pack\/install/);
   });
 });
-describe("no-publish workflow policy",()=>{
+describe("preflight and stage-only workflow policy",()=>{
   it("pins actions and gates merged-package tests without registry credentials",()=>{
     const root=fileURLToPath(new URL("../",import.meta.url)),text=readFileSync(join(root,".github/workflows/publish.yml"),"utf8"),w=YAML.parse(text);
     expect(w.permissions).toEqual({contents:"read"});
-    expect(w.concurrency["cancel-in-progress"]).toBe(true);
+    expect(w.concurrency["cancel-in-progress"]).toBe(false);
+    expect(w.on.workflow_dispatch.inputs.stage_npm.default).toBe(false);
     expect(w.on.workflow_dispatch).toBeDefined();expect(w.on.push.branches).toEqual(["main"]);expect(w.on.push.tags).toBeUndefined();
     expect(w.jobs.aggregate.needs).toBe("build");expect(w.jobs["verify-packed"].needs).toBe("aggregate");
     const policy=JSON.parse(readFileSync(join(root,"release.config.json"),"utf8"));
     for(const name of ["build","verify-packed"]){
       expect(w.jobs[name].strategy.matrix.include.map((i:{platform:string,target:string,os:string})=>({platform:i.platform,target:i.target,runner:i.os}))).toEqual(policy.platforms);
     }
-    for(const job of Object.values(w.jobs) as Array<{permissions?:object,steps:Array<{uses?:string,run?:string}>}>){
-      expect(job.permissions).toBeUndefined();
+    expect(w.jobs["stage-npm"].needs).toEqual(["build","aggregate","verify-packed"]);
+    expect(w.jobs["stage-npm"].environment).toBe("npm-release");
+    expect(w.jobs["stage-npm"].permissions).toEqual({contents:"read","id-token":"write"});
+    expect(w.jobs["stage-npm"].if).toContain("inputs.stage_npm == true");
+    expect(w.jobs["stage-npm"].if).toContain("refs/heads/main");
+    for(const [name,job] of Object.entries(w.jobs) as Array<[string,{permissions?:object,steps:Array<{uses?:string,run?:string}>}]>){
+      if(name!=="stage-npm")expect(job.permissions).toBeUndefined();
       for(const step of job.steps){if(step.uses)expect(step.uses).toMatch(/@[a-f0-9]{40}$/);if(step.run)expect(step.run).not.toMatch(/npm\s+(?:publish|stage|login)|NODE_AUTH_TOKEN|NPM_TOKEN|git\s+push/);}
     }
-    expect(text).not.toMatch(/id-token:|packages:\s*write|workflow_run:|secrets\./);
+    expect(text).not.toMatch(/packages:\s*write|workflow_run:|secrets\./);
   });
 });
