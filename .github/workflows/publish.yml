@@ -1,0 +1,151 @@
+# This workflow only prepares and verifies artifacts. It cannot write to npm.
+name: release preflight (no publish)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish.yml"
+      - "release.config.json"
+      - "package*.json"
+      - "Cargo.*"
+      - "crates/**"
+      - "packages/**"
+      - "scripts/**"
+      - "test/**"
+      - "vendor/**"
+      - "licenses/**"
+      - "LICENSE"
+      - "THIRD_PARTY_NOTICES.md"
+permissions:
+  contents: read
+concurrency:
+  group: release-preflight-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: darwin-arm64
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            platform: darwin-x64
+            target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            platform: linux-x64-gnu
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      OPENCODE_CURSOR_REQUIRE_HOST: "1"
+      CURSOR_NATIVE_REQUIRE_PI: "1"
+      EXPECTED_TARGET: ${{ matrix.target }}
+      EXPECTED_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: External Cargo directory
+        run: |
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cursor-release-target" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = macOS ]; then echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> "$GITHUB_ENV"; fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.99.1
+          components: rustfmt, clippy
+      - name: Require matching native host
+        run: |
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "$EXPECTED_TARGET"
+          node --input-type=module -e 'const p=process.platform==="linux"?"linux-"+process.arch+"-gnu":process.platform+"-"+process.arch;if(p!==process.env.EXPECTED_PLATFORM)throw Error("Wrong native runner architecture")'
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - name: Install pinned OpenCode host
+        run: |
+          npm install --global --legacy-peer-deps @opencode/cli@2.2.5
+          opencode --version
+      - run: npm run check
+      - run: npm run audit:source
+      - name: Export tested single-target tarballs
+        run: npm run release:export -- --output "$RUNNER_TEMP/part"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: part-${{ matrix.platform }}
+          path: ${{ runner.temp }}/part/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+  aggregate:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          pattern: part-*
+          path: ${{ runner.temp }}/parts/
+      - name: Merge matching commit/version/platform inventories
+        run: npm run release:aggregate -- --input "$RUNNER_TEMP/parts" --output "$RUNNER_TEMP/bundle"
+      - run: npm run release:verify -- --bundle "$RUNNER_TEMP/bundle"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-preflight-bundle
+          path: ${{ runner.temp }}/bundle/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+  verify-packed:
+    needs: aggregate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: darwin-arm64
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            platform: darwin-x64
+            target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            platform: linux-x64-gnu
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      OPENCODE_CURSOR_REQUIRE_HOST: "1"
+      CURSOR_NATIVE_REQUIRE_PI: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - name: Build only JS/types for mock-host test infrastructure
+        run: npm run build:js && npm run build:types
+      - name: Install pinned OpenCode host
+        run: |
+          npm install --global --legacy-peer-deps @opencode/cli@2.2.5
+          opencode --version
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-preflight-bundle
+          path: ${{ runner.temp }}/bundle/
+      - run: npm run release:verify -- --bundle "$RUNNER_TEMP/bundle"
+      - name: Test exactly the merged tarballs, not workspace binaries
+        run: npm run test:packages -- --archives "$RUNNER_TEMP/bundle"

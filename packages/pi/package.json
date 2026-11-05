@@ -1,9 +1,21 @@
 {
-  "name": "@cursor-native/pi",
+  "name": "@cursor-harness-provider/pi",
   "version": "0.3.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "license": "MIT",
+  "description": "Unofficial Cursor model provider for Pi using a shared Rust runtime",
+  "engines": { "node": ">=22.19.0" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berialcheng/cursor-harness-provider.git",
+    "directory": "packages/pi"
+  },
+  "homepage": "https://github.com/berialcheng/cursor-harness-provider#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "exports": "./dist/index.js",
   "files": [
     "dist",
@@ -12,7 +24,7 @@
     "licenses"
   ],
   "dependencies": {
-    "@cursor-native/native": "0.3.0"
+    "@cursor-harness-provider/native": "0.3.0"
   },
   "pi": {
     "extensions": [
@@ -20,7 +32,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-ai": "~1.4.0 || ~1.5.0",
+    "@earendil-works/pi-coding-agent": "~1.4.0 || ~1.5.0"
   }
 }

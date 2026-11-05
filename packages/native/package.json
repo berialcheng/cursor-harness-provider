@@ -1,9 +1,21 @@
 {
-  "name": "@cursor-native/native",
+  "name": "@cursor-harness-provider/native",
   "version": "0.3.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "license": "MIT",
+  "description": "Shared, hash-verified Rust Cursor runtime for coding harnesses",
+  "engines": { "node": ">=22.19.0" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berialcheng/cursor-harness-provider.git",
+    "directory": "packages/native"
+  },
+  "homepage": "https://github.com/berialcheng/cursor-harness-provider#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

@@ -2,12 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3Content, LanguageModelV3GenerateResult, LanguageModelV3StreamPart, LanguageModelV3Usage } from "@ai-sdk/provider";
 import { inlineImage, nativeReasoning, requestHeader, validateOptions } from "./adapter.js";
-import { createRustEngine, type RustEngine, type RustStream } from "@cursor-native/native";
+import { createRustEngine, type RustEngine, type RustStream } from "@cursor-harness-provider/native";
 import { redactSecrets } from "../../../vendor/pi-cursor/src/utils/security.js";
 
-export { nativeVersion, createRustEngine } from "@cursor-native/native";
+export { nativeVersion, createRustEngine } from "@cursor-harness-provider/native";
 export const PROVIDER_ID = "cursor-native";
-export const PACKAGE_ID = "@cursor-native/opencode";
+export const PACKAGE_ID = "@cursor-harness-provider/opencode";
 export const SESSION_HEADER = "x-cursor-native-session-id";
 export const WORKSPACE_HEADER = "x-cursor-native-directory";
 export type AccessTokenProvider = ((options?: { forceRefresh?: boolean; signal?: AbortSignal }) => Promise<string>) & { readonly scope?: string };

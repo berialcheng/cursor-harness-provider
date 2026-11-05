@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { createRustEngine, nativeVersion, type RustEngine, type RustStream } from "@cursor-native/native";
+import { createRustEngine, nativeVersion, type RustEngine, type RustStream } from "@cursor-harness-provider/native";
 import type { Api, Model, SimpleStreamOptions, TranscriptContext, AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { CursorAuth, type ResolveAuth } from "./auth/index.js";

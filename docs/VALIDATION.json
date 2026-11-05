@@ -18,8 +18,8 @@
   },
   "checks": {
     "rustTests": 73,
-    "javascriptAndHostTests": 216,
-    "jsTestFiles": 25,
+    "javascriptAndHostTests": 239,
+    "jsTestFiles": 26,
     "typecheck": true,
     "rustfmt": true,
     "clippyDenyWarnings": true,
@@ -86,8 +86,27 @@
     "licenseRegressionTests": 14,
     "cargoDependencyScopeClassified": true,
     "knownProtocBuildToolTextGaps": 9,
-    "multiTargetAggregationImplemented": false,
-    "packedHostEndToEndFlowsVerified": false
+    "multiTargetAggregationImplemented": true,
+    "packedHostEndToEndFlowsVerified": true
+  },
+  "releasePreparation": {
+    "scope": "@cursor-harness-provider",
+    "rootPrivate": true,
+    "workspacePublicMetadataPrepared": true,
+    "version": "0.3.0",
+    "localPackedHosts": ["Pi 1.4.0", "Pi 1.5.0", "OpenCode 2.2.5/Bun"],
+    "packedHostCasesPerRun": 6,
+    "syntheticAggregationTests": true,
+    "lockedDependencyReferenceCounts": {
+      "aarch64-apple-darwin": 168,
+      "x86_64-apple-darwin": 169,
+      "x86_64-unknown-linux-gnu": 167
+    },
+    "reviewFollowups": "PAX total-byte budget and independent locked dependency membership fixed with regressions; not a full audit",
+    "realThreeTargetMatrixVerified": false,
+    "workflow": "publish.yml: preflight only, contents read",
+    "registryWritesPerformed": false,
+    "credentialsOrInstalledPluginsChanged": false
   },
   "relocation": {
     "destinationFolder": "cursor-harness-provider",

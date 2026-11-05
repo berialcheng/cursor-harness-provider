@@ -12,7 +12,8 @@ const binary = requestedBinary.includes("/") && !isAbsolute(requestedBinary) ? r
 const version = spawnSync(binary, ["--version"], { encoding: "utf8" });
 const available = version.status === 0 && /\b1\.[45]\.0\b/.test(version.stdout);
 if (process.env.CURSOR_NATIVE_REQUIRE_PI === "1" && !available) throw new Error("Required actual Pi1.4/1.5 host unavailable");
-const extension = fileURLToPath(new URL("../../packages/pi/dist/index.js", import.meta.url));
+const extension = process.env.CURSOR_PACKED_PI_EXTENSION ?? fileURLToPath(new URL("../../packages/pi/dist/index.js", import.meta.url));
+if (!isAbsolute(extension)) throw new Error("Pi test extension must be absolute");
 
 async function hostCase(kind: "text" | "read" | "denied") {
   const profile = await realpath(await mkdtemp(join(tmpdir(), "cursor-native-pi-host-")));

@@ -5,6 +5,10 @@
   "type": "module",
   "license": "MIT",
   "description": "Unofficial in-process native Cursor provider for Pi and OpenCode",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berialcheng/cursor-harness-provider.git"
+  },
   "engines": {
     "node": ">=22.19.0"
   },
@@ -24,8 +28,12 @@
     "typecheck": "npm run build:types && tsc --noEmit",
     "test:rust": "node scripts/test-rust.mjs",
     "licenses": "node scripts/collect-licenses.mjs",
+    "licenses:lock": "node scripts/lock-dependencies.mjs",
     "package:licenses": "node scripts/package-licenses.mjs",
     "test:packages": "node scripts/test-packages.mjs",
+    "release:export": "node scripts/release.mjs export",
+    "release:aggregate": "node scripts/release.mjs aggregate",
+    "release:verify": "node scripts/release.mjs verify",
     "audit:source": "node scripts/audit-source.mjs",
     "lint:rust": "node scripts/lint-rust.mjs",
     "test": "vitest run",

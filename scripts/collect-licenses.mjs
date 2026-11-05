@@ -2,10 +2,11 @@
 import { mkdirSync, readdirSync, readFileSync, copyFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { root, checkRustWorkspace, runCargo } from "./rust-env.mjs";
-import { classifyDependencies } from "./package-licenses.mjs";
+import { assertLockedDependencies, classifyDependencies, metadataDependencyRecords } from "./license-inputs.mjs";
 const { host } = checkRustWorkspace();
 const target = process.env.CARGO_BUILD_TARGET || host;
 const metadata = JSON.parse(runCargo(["metadata", "--locked", "--offline", "--filter-platform", target, "--format-version", "1"], { capture: true }));
+assertLockedDependencies(root, target, metadataDependencyRecords(metadata));
 const dependencyScopes = classifyDependencies(metadata);
 const out = join(root, "licenses", "rust");
 mkdirSync(out, { recursive: true });

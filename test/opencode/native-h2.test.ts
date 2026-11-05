@@ -4,7 +4,7 @@ import { createNativeModel, SESSION_HEADER, WORKSPACE_HEADER } from "../../packa
 import { cursorServer } from "./fixtures/cursor-server.js";
 import { cleanupAllSessionState } from "../reference/pi-cursor/src/stream/native-core.js";
 import { resetCursorAgentUrlCacheForTests } from "../reference/pi-cursor/src/config/index.js";
-import { shutdownRustEngines } from "@cursor-native/native";
+import { shutdownRustEngines } from "@cursor-harness-provider/native";
 import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
 afterEach(() => { shutdownRustEngines(); cleanupAllSessionState(); resetCursorAgentUrlCacheForTests(); delete process.env.OPENCODE_CURSOR_AGENT_URL; });
 function model(url: string) {

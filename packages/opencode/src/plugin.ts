@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Plugin, Model, Provider, Integration, Credential } from "@opencode/plugin";
 import { createNativeModel, PROVIDER_ID, PACKAGE_ID, SESSION_HEADER, WORKSPACE_HEADER, type NativeModelOptions } from "./model.js";
 import { createCursorAuthClient, type CursorCredentials } from "../../../vendor/pi-cursor/src/auth/oauth.js";
-import { createRustEngine } from "@cursor-native/native";
+import { createRustEngine } from "@cursor-harness-provider/native";
 interface CursorModel { id: string; name: string; reasoning: boolean; contextWindow: number; maxTokens: number; requestedModelId?: string; parameters?: unknown[]; requiresMaxMode?: boolean; supportsImages?: boolean; }
 
 const providerID = PROVIDER_ID as Provider.ID;

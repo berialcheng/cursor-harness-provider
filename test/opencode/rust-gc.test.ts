@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { nativeBindingPath } from "@cursor-native/native";
+import { nativeBindingPath } from "@cursor-harness-provider/native";
 const run = promisify(execFile);
 describe("Rust Node-API rejected-promise lifetime", () => {
   it("does not strongly retain failed async method receivers", async () => {

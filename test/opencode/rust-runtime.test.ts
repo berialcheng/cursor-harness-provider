@@ -11,7 +11,7 @@ import { create, fromJson, toBinary } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
 import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { createNativeModel, SESSION_HEADER, WORKSPACE_HEADER, type AccessTokenProvider } from "../../packages/opencode/src/model.js";
-import { createRustEngine, nativeBindingPath, nativeVersion, shutdownRustEngines, type RustEngine, type RustStream } from "@cursor-native/native";
+import { createRustEngine, nativeBindingPath, nativeVersion, shutdownRustEngines, type RustEngine, type RustStream } from "@cursor-harness-provider/native";
 import { FetchArgsSchema, McpArgsSchema, ReadArgsSchema, ShellArgsSchema, WriteArgsSchema } from "../reference/pi-cursor/src/proto/agent_pb.js";
 import { frameConnectMessage } from "../reference/pi-cursor/src/client/bridge.js";
 import {
@@ -97,7 +97,7 @@ describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
     const runtimePackage = new URL("../../packages/native/", import.meta.url);
     const hostPackage = new URL("../../packages/opencode/", import.meta.url);
     const manifest = JSON.parse(await readFile(new URL("package.json", runtimePackage), "utf8"));
-    expect(manifest.name).toBe("@cursor-native/native");
+    expect(manifest.name).toBe("@cursor-harness-provider/native");
     expect(manifest.version).toBe("0.3.0");
     expect(nativeVersion()).toBe(manifest.version);
     expect(binding.nativeVersion()).toBe(manifest.version);
@@ -114,7 +114,7 @@ describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
         expect(code).toContain("manifest.json");
         expect(map.sources.some(source => /packages\/opencode\//.test(source))).toBe(false);
       } else {
-        expect(code).toMatch(/from ["']@cursor-native\/native["']/);
+        expect(code).toMatch(/from ["']@cursor-harness-provider\/native["']/);
         expect(code).not.toMatch(/\.NativeEngine\(|manifest\.json|node:module/);
       }
       expect(code).not.toMatch(/@earendil-works\/|@opencode\/plugin|@bufbuild\/|node:http2|streamCursor|createConnectFrameParser/);
@@ -124,7 +124,7 @@ describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
     // embedded binding or silently fall back to a CLI/JS engine.
     const directory = await privateDirectory("artifact-without-binding-");
     const artifact = join(directory, "model.mjs");
-    const relocatedRuntime = join(directory, "node_modules", "@cursor-native", "native");
+    const relocatedRuntime = join(directory, "node_modules", "@cursor-harness-provider", "native");
     await mkdir(join(relocatedRuntime, "dist"), { recursive: true });
     await writeFile(join(relocatedRuntime, "package.json"), JSON.stringify(manifest));
     await writeFile(join(relocatedRuntime, "dist", "index.js"), await readFile(new URL("dist/index.js", runtimePackage)));

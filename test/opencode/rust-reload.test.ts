@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from "vitest";
 import plugin from "../../packages/opencode/src/plugin.js";
 import { PACKAGE_ID, SESSION_HEADER, WORKSPACE_HEADER } from "../../packages/opencode/src/model.js";
-import { shutdownRustEngines } from "@cursor-native/native";
+import { shutdownRustEngines } from "@cursor-harness-provider/native";
 import { cursorServer } from "./fixtures/cursor-server.js";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 afterEach(() => shutdownRustEngines());
@@ -33,7 +33,7 @@ it("versions cached SDK/language factories on activation, not on catalog replay"
     const cleanup = await plugin.setup(context as unknown as Parameters<typeof plugin.setup>[0]);
     if (cleanup) cleanups.push(cleanup);
     const info = inventory.info;
-    expect(plugin.id).toBe("@cursor-native/opencode");
+    expect(plugin.id).toBe("@cursor-harness-provider/opencode");
     expect(info).toMatchObject({ id: "cursor-native", integrationID: "cursor-native", package: "aisdk:" + PACKAGE_ID });
     expect(methods).toEqual(expect.arrayContaining([
       expect.objectContaining({ integrationID: "cursor-native", method: expect.objectContaining({ id: "cursor-pkce", type: "oauth" }) }),

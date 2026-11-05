@@ -28,7 +28,7 @@ test/reference/       # Earlier JS implementation, test oracles only
 licenses/             # Locked target-specific third-party notice inventory
 ```
 
-Internal workspace package names (`@cursor-native/*`) and host provider/API IDs remain stable for compatibility; they are not the repository name.
+Planned public packages use `@cursor-harness-provider/native`, `/pi` and `/opencode`. The root workspace remains private. Stable host provider/API/OAuth identifiers remain unchanged; npm package names are a separate layer.
 
 ## Build
 
@@ -41,7 +41,7 @@ npm run check
 
 Cargo output lives outside this watched repository. `CARGO_TARGET_DIR` can select an existing external cache.
 Source and native package versions must match. `npm run build` checks Cargo/workspace versions and writes a SHA-256 manifest.
-The build also emits native TypeScript declarations and assembles project/upstream/Rust license texts into the workspace packages. `npm run check` packs and installs all three tarballs offline with lifecycle scripts disabled, then checks native loading without a Rust toolchain and an isolated TypeScript consumer. Packed Pi/OpenCode end-to-end flows and multi-platform release aggregation remain separate release gates.
+The build also emits native TypeScript declarations and assembles project/upstream/Rust license texts into the workspace packages. `npm run check` packs and installs all three tarballs offline with lifecycle scripts disabled, then checks native loading without a Rust toolchain and an isolated TypeScript consumer. It also runs actual Pi/OpenCode text/read-allow/read-deny flows from the installed tarballs, using provisioned external host SDK peers and a local mock upstream. Multi-platform execution is verified by the separate read-only release-preflight workflow, not inferred from local tests.
 A git checkout is not a precompiled distribution: missing/mismatched native binaries fail clearly, never silently compile or fall back to CLI/JS.
 
 Initial local development used an existing npm mirror after public npm connections were reset. The committed lockfile uses canonical public npm URLs with unchanged integrity hashes. A subsequent [clean GitHub Actions run](https://github.com/berialcheng/cursor-harness-provider/actions/runs/41799648850) passed public-registry installation and the checks on macOS and Linux.
@@ -86,7 +86,7 @@ No performance, quota, cache savings or billing superiority is claimed.
 
 ## Package releases
 
-npm releases are not enabled. The [publishing design](docs/PUBLISHING.md) records tarball gaps, native build requirements and the proposed OIDC/staged-approval pipeline. Final package names and registry operations require separate authorization.
+npm releases are not enabled. The [release-preparation guide](docs/PUBLISHING.md) describes the implemented, read-only `publish.yml` preflight: native-host builds, per-target license/binary aggregation and verification of the exact merged tarballs. It has no staging/publish commands or registry-write credentials. It produces CI artifacts only; authenticated npm setup, version tags and publishing still require separate authorization.
 
 ## Provenance
 

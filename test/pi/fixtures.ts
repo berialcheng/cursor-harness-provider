@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { normalizeContext, type Api, type AssistantMessageEvent, type AssistantMessageEventStream, type Context, type Model, type OAuthCredentials } from "@earendil-works/pi-ai";
-import type { RustEngine, RustStream } from "@cursor-native/native";
+import type { RustEngine, RustStream } from "@cursor-harness-provider/native";
 import { CursorAuth, type AuthDependencies } from "../../packages/pi/src/auth/index.js";
 import { PiRustRuntime, type RuntimeDependencies } from "../../packages/pi/src/runtime.js";
 import { CURSOR_NATIVE_API } from "../../packages/pi/src/constants.js";

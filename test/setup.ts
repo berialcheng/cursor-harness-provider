@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, vi } from "vitest";
-import { shutdownRustEngines } from "@cursor-native/native";
+import { shutdownRustEngines } from "@cursor-harness-provider/native";
 
 // Per-worker fixtures only: never consult the user's Cursor config, credentials,
 // caches, proxy, or a live endpoint. beforeEach reapplies this after tests that

@@ -1,90 +1,102 @@
-# npm release design
+# npm release preparation
 
-Status: **proposal, not an enabled publishing workflow**. Source push authorization does not authorize an npm publish, stage, tag, account change or installed-plugin switch.
+**Implemented: package metadata and read-only release preflight. Not implemented/enabled: npm staging or publishing.**
 
-Reviewed 2026-11-04 against the current package layout and npm documentation. The [first successful public CI run](https://github.com/berialcheng/cursor-harness-provider/actions/runs/41799648850) checked macOS and Linux. It did not publish or retain distributable binaries.
+The intended npm organization is `cursor-harness-provider`, reported created by the owner. The public package names are configured as:
 
-## Recommended package model
+- `@cursor-harness-provider/native`
+- `@cursor-harness-provider/pi`
+- `@cursor-harness-provider/opencode`
 
-Keep the root workspace private and publish three packages: the shared native loader/binaries, the Pi adapter, and the OpenCode adapter. Use a confirmed, owner-controlled npm scope; neither the GitHub username nor the Git author email establishes npm ownership. Do not assume the current `@cursor-native` scope is available to this project.
+The root workspace remains private; these three workspaces have public npm metadata. This is not a claim that a package/version already exists on npm. Provider IDs, OAuth integration/method IDs, Pi API IDs, credentials and installed plugins are not renamed or migrated.
 
-Final npm names remain a user decision. Renaming npm workspaces requires updating imports, exact native dependencies and the lockfile, but must not rename the stable host provider, OAuth, API or session identifiers.
+## Local development checks
 
-For the first release, put the tested platform binaries together in the native package. This matches the existing relative `native/manifest.json` loader. Per-platform optional packages are a later size optimization and require a loader change, not just a CI matrix.
+`npm run check` covers typechecking, Rust formatting/clippy/tests, builds, JavaScript tests and actual tarball acceptance.
 
-## Packaging/preflight status
+`npm run test:packages` creates three real tarballs and installs them offline with lifecycle scripts and peer auto-install disabled, using an isolated temporary npm home/config/cache. It verifies exact project/upstream license text, inventory hashes, native binary hashes, native loading with no Rust executable available, and a standalone TypeScript consumer.
 
-The initial dry-run exposed missing distribution files. The license and declaration fixes below are now implemented and locally tested; registry publication remains disabled:
+It then runs six actual Pi/OpenCode host cases from the installed tarball directories: text/thinking, allowed host read/result forwarding, and denied host read. Only the selected host's Pi SDK peers are linked from its provisioned installation; the three project packages are real tarball installs, not workspace links. No Cursor account is used: upstream HTTP/2 is a local mock and profiles are isolated.
 
-| Area | Current result | Required preparation |
-| --- | --- | --- |
-| Publish permission | All packages have `private: true` | Keep root private; enable only approved publishable workspaces |
-| Native types | `dist/index.d.ts` emitted, exported and packed | Verified by an isolated TypeScript consumer |
-| Licenses | Every tarball includes the unchanged project `LICENSE` | Compared byte-for-byte with the canonical root license |
-| Notices | Every package includes upstream MIT text; native includes referenced Rust notices | Verified against an inventoried, hashed license tree |
-| Native platforms | Local tarball contains only darwin-arm64 | Build, test and merge the explicitly supported target set |
-| Registry metadata | No publish/repository configuration | Set public access, npmjs registry, repository URL and workspace directory |
+Local macOS arm64 tests are not evidence that another architecture's binary executes. Synthetic multi-target tests exercise aggregation and rejection rules, not foreign-architecture runtime compatibility.
 
-Add package-level READMEs and a tested Pi peer-dependency range. Test the real tarballs, not workspace symlinks. Re-run the production bundle guard so no reference JS protocol engine or cross-host SDK enters a release.
+## Package licenses
 
-### Implemented local checks
+The project and upstream license sources remain unchanged. Workspace `LICENSE` and `licenses/` copies are generated/ignored; package attribution files are versioned.
 
-`npm run build` emits declarations, collects target-specific notices and assembles package licenses. `npm run check` additionally runs `npm run test:packages`, which creates real tarballs, installs all three offline with lifecycle scripts and peer auto-install disabled, loads the native engine with no Rust toolchain available, and typechecks an isolated consumer. npm uses an isolated temporary home/config/cache. Existing real Pi/OpenCode flow tests still exercise workspace adapters; packed-host end-to-end flows remain a release gate, not a claim of this smoke test.
+The inventory conservatively separates normal Cargo dependency closure (including normal proc-macro/codegen edges), active build/test dependencies, and inactive entries. Unknown missing texts fail preparation. The documented protoc-bin-vendored build-tool text gaps remain explicit; compiler binaries are not included in the Node-API module. This is not an exact runtime-link SBOM or legal-compliance certification.
 
-The project and upstream license sources remain unchanged. Workspace `LICENSE` and `licenses/` copies are generated/ignored; attribution files are versioned. The assembly refuses symlinked inputs, unmanaged output directories and manually changed package copyright files.
+`licenses/locked-target-dependencies.json` is an independent, source-controlled reference generated by `npm run licenses:lock` from `cargo metadata --locked --offline --filter-platform` for every release target. It is bound to the Cargo lockfile and workspace-manifest hashes; regenerate it explicitly when those inputs change. Each native build independently compares current Cargo metadata against the reference. Package preparation/verification then requires exact dependency identity, license and classification membership, even if a supplied artifact's hashes have been recomputed. A coherent inventory is not automatically a complete one.
 
-Cargo's normal dependency closure is recorded conservatively, including normal proc-macro/codegen edges; active build/test dependencies and inactive target/optional entries are classified separately. Missing normal-dependency notices fail preparation. Only explicitly classified protoc-bin-vendored build tools may retain their recorded text gaps; the compiler binaries are not shipped. Unknown missing build-tool notices also fail. This is still not a legal-compliance certification or exact runtime-link SBOM.
+Each single-target build retains its own inventory. A merged native package preserves the complete trees under `licenses/targets/<platform>/`, with a top-level hashed manifest. Inventories are not flattened or silently overwritten. Package preparation rejects symlinks, unsafe paths, unmanaged output directories and manually changed generated copyright files.
 
-Current packing rejects additional binary platforms without matching target-specific license inventories. Multi-platform aggregation is still to be implemented; do not bypass this check to distribute an incompletely attributed fat native package.
+## Supported release candidate targets
 
-## Native build policy
+`release.config.json` is the source policy. The workflow's matrix is tested against it:
 
-Candidate initial targets are macOS arm64/x64 and Linux x64 GNU, but include a target only after its native Node/Bun host tests pass on matching architecture. Pin runner architecture and Rust target explicitly rather than inferring architecture from a mutable image label. Define the minimum macOS/glibc versions; success on Ubuntu 22.04 does not prove compatibility with every GNU/Linux distribution.
+| Native platform | Rust target | Standard hosted runner | Initial support floor |
+| --- | --- | --- | --- |
+| darwin-arm64 | aarch64-apple-darwin | macos-15 | macOS 15+ |
+| darwin-x64 | x86_64-apple-darwin | macos-15-intel | macOS 15+ |
+| linux-x64-gnu | x86_64-unknown-linux-gnu | ubuntu-22.04 | x64 GNU, Ubuntu 22.04 / glibc 2.35+ |
 
-Do not advertise Windows, musl or Linux arm64 until those builds and host tests exist. Windows journal support is currently absent.
+These are candidate targets until the corresponding workflow run passes. No Windows journal, Linux arm64 or musl support is advertised. The native loader fails clearly on an unsupported platform; it does not download, compile or use a CLI/JS inference fallback.
 
-Each matrix job must produce its binary, platform manifest entry and target-specific license inventory. The aggregation job must:
+## What publish.yml currently does
 
-- Verify one source commit and version across root/workspaces, Cargo crates, binding and manifests.
-- Reject duplicate/missing platform entries, mixed versions and SHA-256 mismatches.
-- Merge target-specific notices into a distribution inventory, preserving upstream attribution and documented build-tool limitations; do not claim legal certification.
-- Build from the release commit in CI, not upload a developer's local binary.
-- Install packed packages into a clean consumer fixture and exercise real Pi/OpenCode permission and tool-result flows without real Cursor credentials.
-- Demonstrate installation with lifecycle scripts disabled and no Rust toolchain. Missing/unsupported binaries must fail clearly, with no download, compilation, CLI or JS inference fallback.
-
-## Proposed GitHub release pipeline
+The workflow is named **release preflight (no publish)**. It runs on selected source pushes to main or manual dispatch, not version tags:
 
 ```text
-approved vX.Y.Z tag on a trusted main commit
-  -> verify versions and run checks
-  -> native build/test matrix (no publishing credentials)
-  -> merge binaries/manifests/notices
-  -> npm pack + isolated tarball installation/host smoke tests
-  -> protected npm-release environment
-  -> OIDC stage candidates
-  -> maintainer 2FA approval: native first, then adapters
+3 matching-native-host builds
+  -> source tests + tarball host tests
+  -> export per-target archives and evidence
+  -> aggregate matching commit/run/attempt/lockfile/version parts
+  -> repack one multi-platform native package and two identical adapters
+  -> verify exactly those merged archives on all 3 native hosts
 ```
 
-Use `needs` inside the release workflow to enforce the gates. A separate check workflow happening to run on the same tag does not gate publishing automatically. Do not publish from pull requests or consume artifacts from an untrusted fork workflow.
+It has only `contents: read`: no npm token, no OIDC write permission, no staging/publish/login command and no environment or registry mutation. Actions are pinned to official tag commits resolved during preparation; this is not a full audit of those actions. Release dependency/build caches are not restored. Checkout credentials are not persisted.
 
-Publish only the approved workspaces, never an unconditional root/workspaces publish. npm versions are immutable and a three-package release is not transactional: native must be available before adapters depending on it become available. Handle partial releases explicitly; never automatically unpublish or overwrite a version.
+Each exported part binds its Git commit, npm/Cargo lock hashes, workflow run and attempt, target, and archive checksums. Dirty source is refused in CI except the regenerated target inventory. Aggregation rejects missing/duplicate targets, mixed identities, platform-dependent common JS/metadata, corrupt binaries/notices and missing host-test evidence.
 
-Use maintained actions pinned to reviewed commit SHAs. Disable release dependency/build-cache restoration initially; keep the privileged publishing job minimal and consume only verified artifacts from the same trusted run. Give `id-token: write` only to the publishing job, with `contents: read`; no `packages: write` is needed for npmjs.com. Protect the release environment and tag creation.
+The merged bundle contains exactly `native.tgz`, `pi.tgz`, `opencode.tgz` and `release-manifest.json`. It is retained as a GitHub Actions artifact for seven days, not a GitHub Release or an npm package.
 
-## npm authentication and first-release setup
+### Preflight tooling
 
-Use [npm Trusted Publishing (OIDC)](https://docs.npmjs.com/trusted-publishers/), not a long-lived `NPM_TOKEN`. npm's `GITHUB_TOKEN` example for GitHub Packages is a different registry and is not npmjs authentication.
+- `npm run release:export -- --output <new-directory>`: CI-only export after packed-host verification.
+- `npm run release:aggregate -- --input <parts-directory> --output <new-directory>`: require every policy target and merge its archives.
+- `npm run release:verify -- --bundle <bundle-directory>`: revalidate identity, checksums, metadata and complete license/native coverage.
+- Local development may add `--local`; its evidence is marked local-only and cannot be accepted by CI. Existing outputs are never overwritten.
 
-Before enabling publishing:
+All npm subprocesses in these helpers allow only offline pack/install, with scripts disabled. Archive headers are validated before extraction: no traversal, links/devices, duplicates or private files; compressed bytes and all expanded TAR bytes (including PAX/GNU metadata) are bounded before parsing, with a 30-second extraction subprocess deadline.
 
-1. Confirm the actual npm account/scope, package names and 2FA with the owner. No credentials need to be placed in this repository or chat.
-2. Bootstrap package ownership if needed. [Staged publishing](https://docs.npmjs.com/staged-publishing) supports new packages: an authenticated maintainer can stage a package, creating a **public `0.0.0-stage` placeholder**, while candidate contents remain unavailable until approval. This is still a registry write and needs explicit authorization. Do not assume OIDC can bootstrap an unconfigured new package by itself.
-3. Configure a trusted publisher separately for each package: GitHub owner `berialcheng`, repository `cursor-harness-provider`, workflow filename `publish.yml` (not the full path), and environment `npm-release`. The proposed workflow must exist before activation.
-4. Create the configuration shortly before the release. npm requires its first successful publish within two days or the configuration expires.
-5. Start with stage-only permissions and approve candidates with maintainer 2FA. New trusted publishers default to staging; direct `npm publish` must be explicitly allowed if chosen later. After verification, restrict traditional publishing tokens in npm settings.
+## Next steps that still need authorization
 
-Use GitHub-hosted runners. Current minimum versions are Node 22.14+, npm 11.5.1+ for basic OIDC, and npm 11.15+ for staged publishing. If CI manages dist-tags, npm documents 11.21+ or 12.2+ and a separate **Allow npm dist-tag** permission. Pin a compatible, verified CLI version explicitly; installing Node alone does not guarantee a sufficiently new npm CLI. Do not use `npm whoami` as an OIDC permission test.
+1. Complete this source preflight on all three CI targets and inspect the retained bundle. Local checks alone are insufficient.
+2. Confirm the npm organization ownership in an authenticated session and the package names. Anonymous scope pages are not ownership proof.
+3. Initialize new npm package entries if needed. Interactive staging can create a **public 0.0.0-stage placeholder**, while staged candidate contents remain unavailable until approval. This is still a registry write, not merely configuration.
+4. Configure a GitHub `npm-release` environment and a Trusted Publisher separately for each package, only when first release is ready.
+5. Add the separately reviewed OIDC staging job/version-tag gates. Do not assume another workflow passing on a tag gates that job automatically. Keep the npm environment protected and publish native before adapters.
+6. Review staged candidates and approve with maintainer 2FA. Three-package releases are not transactional; handle partial releases explicitly, with no automatic unpublish/overwrite.
 
-For public packages from this public repository, npm OIDC publishing supports automatic provenance. Verify the published attestation and tarball integrity; a provenance statement does not replace tests or license review. No persistent npm token, host OAuth store, Cursor token or developer journal belongs in an artifact.
+No placeholder, npm stage/publish, version tag, GitHub Release, npm token, Trusted Publisher or GitHub environment is created by the current preflight.
 
-The next release steps are confirmation of the npm namespace, remaining metadata/README/peer-range work, multi-platform artifact/license aggregation, packed-host verification and the protected publishing workflow. No `publish.yml`, version tag, npm staging operation or npm release was created by this design.
+## Future OIDC configuration reference
+
+For each package, the intended Trusted Publisher fields are:
+
+| Field | Value |
+| --- | --- |
+| GitHub organization/user | berialcheng |
+| Repository | cursor-harness-provider |
+| Workflow filename | publish.yml (filename only) |
+| Environment | npm-release |
+| Allowed actions | stage-only initially |
+
+The npm organization name is not the GitHub owner field. New configurations must complete a successful first publish within two days or expire; do not configure them early while this no-publish workflow is still being prepared.
+
+Use GitHub-hosted runners, Node 22.14+, npm 11.5.1+ for OIDC, and npm 11.15+ for staging. OIDC dist-tag management additionally needs an explicit permission and npm 11.21+ or 12.2+. A future privileged job must pin a compatible CLI version; installing Node alone does not ensure a sufficiently new npm. Do not use `npm whoami` as an OIDC permission test.
+
+Public-repository/public-package OIDC publishing supports automatic provenance, which must be checked after approval along with tarball integrity. It does not replace tests/license review. Never put host credentials, recovery codes, private npm configs or developer journals in an artifact.
+
+References: [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/), [staged publishing](https://docs.npmjs.com/staged-publishing), [hosted runner policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).

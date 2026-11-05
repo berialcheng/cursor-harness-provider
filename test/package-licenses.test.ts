@@ -3,7 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 // @ts-expect-error Build tooling is intentionally plain JavaScript, not a public package API.
-import { classifyDependencies, normalDependencyIds, preparePackageLicenses, verifyPackagedLicenses } from "../scripts/package-licenses.mjs";
+import { classifyDependencies, normalDependencyIds, preparePackageLicenses, sha256, verifyPackagedLicenses } from "../scripts/package-licenses.mjs";
+
+// @ts-expect-error Build tooling is intentionally JavaScript.
+import { dependencyRecords, lockedSourceBinding } from "../scripts/license-inputs.mjs";
 
 const temporary: string[] = [];
 afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -13,10 +16,17 @@ function fixture() {
     const file = join(root, path); mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, typeof data === "string" ? data : JSON.stringify(data));
   };
-  const dependency = { name: "fixture-lib", version: "1.0.0", license: "MIT", dependencyScope: "normal", notices: ["rust/fixture-lib-1.0.0/LICENSE"] };
+  const dependency = { name: "fixture-lib", version: "1.0.0", source: "registry+https://github.com/rust-lang/crates.io-index", license: "MIT", dependencyScope: "normal", notices: ["rust/fixture-lib-1.0.0/LICENSE"] };
   const inventory = { target: "aarch64-apple-darwin", dependencies: [dependency] };
   const manifest = { version: "0.3.0", artifacts: { "darwin-arm64": { file: "fixture.node", sha256: "fixture" } } };
   put("package.json", { version: "0.3.0", license: "MIT" });
+  put("Cargo.lock", "Fixture locked source\n");
+  put("Cargo.toml", "[workspace]\nmembers = [\"crates/fixture\"]\n");
+  put("crates/fixture/Cargo.toml", "[package]\nname = \"fixture\"\n");
+  const reference = () => put("licenses/locked-target-dependencies.json", {
+    schemaVersion: 1, sourceBinding: lockedSourceBinding(root), targets: { [inventory.target]: dependencyRecords(inventory.dependencies) },
+  });
+  reference();
   put("LICENSE", "MIT License\nCopyright project fixture\n");
   put("vendor/pi-cursor/LICENSE", "MIT License\nCopyright upstream fixture\n");
   put("licenses/rust-dependencies.json", inventory);
@@ -27,7 +37,7 @@ function fixture() {
     put("packages/" + kind + "/package.json", { version: "0.3.0", license: "MIT", private: true });
     put("packages/" + kind + "/THIRD_PARTY_NOTICES.md", "Original notice: licenses/pi-cursor/LICENSE\n");
   }
-  return { root, put, inventory, manifest, dependency };
+  return { root, put, inventory, manifest, dependency, reference };
 }
 function generate() {
   const f = fixture(); preparePackageLicenses(f.root); return f;
@@ -75,7 +85,7 @@ describe("package license distribution", () => {
     expect(() => preparePackageLicenses(f.root)).toThrow(/Missing third-party license text/);
   });
   it("permits only explicitly classified non-distributed protoc build-tool text gaps", () => {
-    const f = fixture(); f.dependency.name = "protoc-bin-vendored-linux-x86_64"; f.dependency.notices = []; f.dependency.dependencyScope = "build-or-test"; f.put("licenses/rust-dependencies.json", f.inventory);
+    const f = fixture(); f.dependency.name = "protoc-bin-vendored-linux-x86_64"; f.dependency.notices = []; f.dependency.dependencyScope = "build-or-test"; f.put("licenses/rust-dependencies.json", f.inventory); f.reference();
     preparePackageLicenses(f.root);
     const base = join(f.root, "packages/native");
     expect(verifyPackagedLicenses(base, "native", f.root).kind).toBe("native");
@@ -112,6 +122,23 @@ describe("package license distribution", () => {
   it("rejects additional binary platforms without target-specific license inventories", () => {
     const f = fixture(); Object.assign(f.manifest.artifacts, { "linux-x64-gnu": { file: "other.node" } }); f.put("packages/native/native/manifest.json", f.manifest);
     expect(() => preparePackageLicenses(f.root)).toThrow(/Missing target-specific license inventories/);
+  });
+  it("rejects an omitted dependency even when every remaining artifact hash is recomputed", () => {
+    const f = fixture(), extra = { ...f.dependency, name: "another-fixture", notices: ["rust/another-fixture-1.0.0/LICENSE"] };
+    f.inventory.dependencies.push(extra); f.put("licenses/" + extra.notices[0], "MIT License\nAnother dependency\n");
+    f.put("licenses/rust-dependencies.json", f.inventory); f.reference(); preparePackageLicenses(f.root);
+    const directory = "packages/native/licenses/", inventory = JSON.parse(readFileSync(join(f.root, directory, "rust-dependencies.json"), "utf8"));
+    inventory.dependencies.shift(); f.put(directory + "rust-dependencies.json", inventory);
+    rmSync(join(f.root, directory, f.dependency.notices[0]));
+    const manifest = JSON.parse(readFileSync(join(f.root, directory, "distribution.json"), "utf8"));
+    manifest.files = manifest.files.filter((file: { path: string }) => file.path !== f.dependency.notices[0]);
+    manifest.files.find((file: { path: string }) => file.path === "rust-dependencies.json").sha256 = sha256(readFileSync(join(f.root, directory, "rust-dependencies.json")));
+    f.put(directory + "distribution.json", manifest);
+    expect(() => verifyPackagedLicenses(join(f.root, "packages/native"), "native", f.root)).toThrow(/locked target dependency set/);
+  });
+  it("rejects stale independent references after the Cargo lockfile changes", () => {
+    const f = generate(); f.put("Cargo.lock", "Changed locked source\n");
+    expect(() => verifyPackagedLicenses(join(f.root, "packages/native"), "native", f.root)).toThrow(/Stale locked dependency reference/);
   });
   it("detects tampered license contents in a packaged artifact", () => {
     const f = generate(); f.put("packages/native/licenses/rust/fixture-lib-1.0.0/LICENSE", "changed");

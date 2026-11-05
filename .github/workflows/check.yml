@@ -10,24 +10,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, ubuntu-22.04]
+        os: [macos-15, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
     env:
       OPENCODE_CURSOR_REQUIRE_HOST: "1"
       CURSOR_NATIVE_REQUIRE_PI: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - name: Set external Cargo target directory
         run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cursor-native-target" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22.22.0"
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
         with:
           toolchain: 1.99.1
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: ". -> ${{ runner.temp }}/cursor-native-target"
       - run: npm ci --ignore-scripts --legacy-peer-deps

@@ -1,9 +1,21 @@
 {
-  "name": "@cursor-native/opencode",
+  "name": "@cursor-harness-provider/opencode",
   "version": "0.3.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "license": "MIT",
+  "description": "Unofficial Cursor model provider for OpenCode using a shared Rust runtime",
+  "engines": { "node": ">=22.19.0" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berialcheng/cursor-harness-provider.git",
+    "directory": "packages/opencode"
+  },
+  "homepage": "https://github.com/berialcheng/cursor-harness-provider#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "exports": {
     ".": "./dist/plugin.js",
     "./model": "./dist/model.js"
@@ -15,6 +27,6 @@
     "licenses"
   ],
   "dependencies": {
-    "@cursor-native/native": "0.3.0"
+    "@cursor-harness-provider/native": "0.3.0"
   }
 }
