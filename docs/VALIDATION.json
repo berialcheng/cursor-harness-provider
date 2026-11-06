@@ -33,6 +33,10 @@
     ],
     "opencode": "2.2.5/Bun",
     "backend": "local mock Cursor HTTP/2, actual native module",
+    "hostProcessDeadlineMs": 60000,
+    "hostCaseDeadlineMs": 75000,
+    "packedHostSuiteDeadlineMs": 300000,
+    "localInjectedColdStartupRegressionMs": 22000,
     "cases": [
       "text/thinking",
       "host read allowed and result forwarded",

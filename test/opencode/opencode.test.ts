@@ -8,6 +8,10 @@ import { tmpdir } from "node:os";
 import { cursorServer } from "./fixtures/cursor-server.js";
 const run = promisify(execFile);
 const binary = process.env.OPENCODE_BIN ?? "opencode";
+// Cold hosted Intel startup can exceed 20s before the plugin begins its RPC.
+// These bound the external host, not Cursor connection/stream-idle deadlines.
+const hostProcessTimeoutMs = 60_000;
+const hostCaseTimeoutMs = 75_000;
 const pluginDirectory = process.env.CURSOR_PACKED_OPENCODE_DIRECTORY ?? fileURLToPath(new URL("../../packages/opencode", import.meta.url));
 if (!isAbsolute(pluginDirectory)) throw new Error("OpenCode plugin test directory must be absolute");
 const installed = spawnSync(binary, ["--version"], { encoding: "utf8" });
@@ -26,9 +30,10 @@ async function hostCase(kind: "text" | "read" | "denied") {
     plugins: [pluginDirectory], model: "cursor-native/auto",
     permissions: [{ action: "*", resource: "*", effect: "deny" }, ...(kind === "read" ? [{ action: "read", resource: "*", effect: "allow" }] : [])],
   }));
+  const startedAt = Date.now();
   try {
     const command = run(binary, ["run", "--standalone", "--model", "cursor-native/auto", "--format", "json", kind === "text" ? "Reply with PONG" : "TEST_USE_TOOL read the fixture"], {
-      cwd: profile, timeout: 20000, maxBuffer: 2 * 1024 * 1024,
+      cwd: profile, timeout: hostProcessTimeoutMs, maxBuffer: 2 * 1024 * 1024,
       env: { ...process.env, PWD: profile, NODE_ENV: "production", VITEST: "", XDG_CONFIG_HOME: join(profile, "config"), XDG_DATA_HOME: join(profile, "data"), XDG_STATE_HOME: join(profile, "state"), XDG_CACHE_HOME: join(profile, "cache"), OPENCODE_CONFIG_DIR: config,
         OPENCODE_DISABLE_MODELS_FETCH: "1", OPENCODE_DISABLE_AUTOUPDATE: "1", OPENCODE_DISABLE_FFF: "1", OPENCODE_DISABLE_FILEWATCHER: "1", OPENCODE_DISABLE_CLAUDE_CODE: "1", CURSOR_ACCESS_TOKEN: "mock-cursor-token",
         OPENCODE_CURSOR_AGENT_URL: server.url, OPENCODE_CURSOR_OFFLINE: "1", OPENCODE_CURSOR_CACHE_DIR: join(profile, "cursor-cache"), OPENCODE_CURSOR_STREAM_IDLE_TIMEOUT_MS: "2000", OPENCODE_CURSOR_H2_CONNECT_TIMEOUT_MS: "2000", OPENCODE_CURSOR_STREAM_IDLE_MAX_RETRIES: "0" },
@@ -42,8 +47,9 @@ async function hostCase(kind: "text" | "read" | "denied") {
     return { events, runs: server.runs, results: server.results };
   } catch (error) {
     const log = await readFile(join(profile, "data/opencode/log/opencode.log"), "utf8").catch(() => "no isolated log");
-    const failure = error as { stdout?: string; stderr?: string; message?: string };
-    throw new Error([failure.message, "mock runs=" + server.runs.length, failure.stdout, failure.stderr?.slice(-3000), log.slice(-6000)].join("\n"));
+    const failure = error as { stdout?: string; stderr?: string; message?: string; killed?: boolean; signal?: string; code?: string | number };
+    const deadline = `host elapsedMs=${Date.now() - startedAt} limitMs=${hostProcessTimeoutMs} killed=${Boolean(failure.killed)} signal=${failure.signal ?? "none"} code=${failure.code ?? "none"}`;
+    throw new Error([failure.message, deadline, "mock runs=" + server.runs.length, failure.stdout, failure.stderr?.slice(-3000), log.slice(-6000)].join("\n"));
   } finally { await server.close(); await rm(profile, { recursive: true, force: true }); }
 }
 
@@ -52,15 +58,15 @@ describe.skipIf(!available)("OpenCode 2.2.5 actual host (isolated profile, mock 
     const result = await hostCase("text");
     expect(result.events.some(e => e.type === "text" && e.part.text.includes("PONG"))).toBe(true);
     expect(result.runs.length).toBeGreaterThan(0);
-  }, 25000);
+  }, hostCaseTimeoutMs);
   it("executes an explicitly permitted read through OpenCode and resumes Cursor", async () => {
     const result = await hostCase("read");
     expect(JSON.stringify(result.results), JSON.stringify(result.runs.map(r => r.conversationState?.previousWorkspaceUris))).toContain("HOST_PERMISSION_TEST_MARKER");
     expect(result.events.some(e => e.type === "text" && e.part.text === "TOOL_RESULT_RECEIVED")).toBe(true);
-  }, 25000);
+  }, hostCaseTimeoutMs);
   it("does not read a file when OpenCode denies the requested tool", async () => {
     const result = await hostCase("denied");
     expect(JSON.stringify(result.results)).not.toContain("HOST_PERMISSION_TEST_MARKER");
     expect(JSON.stringify(result.results)).toMatch(/denied|rejected|not allowed|permission|error|toolNotFound/i);
-  }, 25000);
+  }, hostCaseTimeoutMs);
 });

@@ -122,7 +122,8 @@ export function runPackagePreflight({ projectRoot = defaultRoot, archivesDirecto
     };
     const hostOutput = execFileSync(process.execPath, [join(projectRoot, "node_modules/vitest/vitest.mjs"), "run",
       "test/opencode/opencode.test.ts", "test/pi/host.test.ts"],
-      { cwd: projectRoot, env: hostEnv, encoding: "utf8", timeout: 120000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+      // Three sequential 75s cases per host file, plus transform/startup margin.
+      { cwd: projectRoot, env: hostEnv, encoding: "utf8", timeout: 300000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
     if (!/6 passed/.test(hostOutput) || /\bskipped\b/.test(hostOutput)) throw new Error("Packed-host flows did not all pass");
     const report = { packages: summaries, offlineInstall: true, lifecycleScriptsDisabled: true,
       nativeLoadWithoutToolchain: output, isolatedTypeConsumer: true,

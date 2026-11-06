@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { cursorServer } from "../opencode/fixtures/cursor-server.js";
 const run = promisify(execFile);
+// Match the bounded cold-host allowance; protocol idle/connect checks stay 2s.
+const hostProcessTimeoutMs = 60_000;
+const hostCaseTimeoutMs = 75_000;
 const requestedBinary = process.env.CURSOR_NATIVE_PI_BINARY ?? "pi";
 const binary = requestedBinary.includes("/") && !isAbsolute(requestedBinary) ? resolve(requestedBinary) : requestedBinary;
 const version = spawnSync(binary, ["--version"], { encoding: "utf8" });
@@ -39,7 +42,7 @@ export default function(pi) {
       "--model", "cursor/auto", "--api-key", "mock-cursor-token", "--thinking", "off", "--tools", "read",
       "--system-prompt", "You are a local transport test. Only use the advertised read tool.",
       kind === "text" ? "Reply with PONG" : "TEST_USE_TOOL read the fixture"], {
-      cwd: profile, timeout: 20000, maxBuffer: 3 * 1024 * 1024,
+      cwd: profile, timeout: hostProcessTimeoutMs, maxBuffer: 3 * 1024 * 1024,
       env: { ...process.env, PWD: profile, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1",
         PI_TELEMETRY: "0", PI_CURSOR_SYSTEM_CREDENTIALS: "0", CURSOR_ACCESS_TOKEN: "mock-cursor-token",
         PI_CURSOR_AGENT_URL: server.url, PI_CURSOR_CACHE_DIR: join(profile, "cache"),
@@ -65,17 +68,17 @@ describe.skipIf(!available)("actual Pi CLI (isolated profile, real Rust/local H2
     const result = await hostCase("text");
     expect(JSON.stringify(result.finished)).toContain("PONG");
     expect(result.runs).toHaveLength(1);
-  }, 25000);
+  }, hostCaseTimeoutMs);
   it("executes one allowed host read and fills its result into the parked Rust RPC", async () => {
     const result = await hostCase("read");
     expect(JSON.stringify(result.results)).toContain("PI_HOST_PERMISSION_MARKER");
     expect(JSON.stringify(result.finished)).toContain("TOOL_RESULT_RECEIVED");
     expect(result.runs).toHaveLength(1); expect(result.results).toHaveLength(1);
-  }, 25000);
+  }, hostCaseTimeoutMs);
   it("returns a denied host tool result without reading the file", async () => {
     const result = await hostCase("denied");
     expect(JSON.stringify(result.results)).not.toContain("PI_HOST_PERMISSION_MARKER");
     expect(JSON.stringify(result.results)).toMatch(/denied|blocked|permission|error/i);
     expect(result.runs).toHaveLength(1); expect(result.results).toHaveLength(1);
-  }, 25000);
+  }, hostCaseTimeoutMs);
 });
