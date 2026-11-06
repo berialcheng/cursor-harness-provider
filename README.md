@@ -86,7 +86,7 @@ No performance, quota, cache savings or billing superiority is claimed.
 
 ## Package releases
 
-The [release guide](docs/PUBLISHING.md) describes `publish.yml`: native-host builds, per-target license/binary aggregation and verification of the exact merged tarballs. Pushes are preflight-only; an explicit main-branch dispatch can stage the verified bundle through OIDC after protected-environment approval. npm maintainer 2FA approval is still required to make versions live. The separate one-time bootstrap workflow creates only metadata setup candidates and public placeholders, never a usable provider release. Installed-plugin changes remain separately authorized.
+The [release guide](docs/PUBLISHING.md) describes `publish.yml`: native-host builds, per-target license/binary aggregation and verification of the exact merged tarballs. Pushes are preflight-only; an explicit main-branch dispatch can stage the verified bundle through OIDC after protected-environment approval. npm maintainer 2FA approval is still required to make versions live. The separate one-time bootstrap workflow uses a temporary scope-limited stage-only token to create metadata setup candidates and public placeholders, never a usable provider release; it no longer waits for an interactive owner login in CI. The token must be revoked and its GitHub Secret removed after use. Never approve bootstrap candidates. Defer any rejection until a real version is publicly published and verified. Installed-plugin changes remain separately authorized.
 
 ## Provenance
 

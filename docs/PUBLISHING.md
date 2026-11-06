@@ -21,20 +21,30 @@ The publisher revalidates the same-run bundle against source, version, coverage,
 
 ## One-time setup for new package names
 
-Trusted Publishers are configured on existing npm package entries. When a developer machine cannot reach the official registry, use the separate `npm-bootstrap.yml` workflow rather than forwarding credentials to a mirror:
+Trusted Publishers are configured on existing npm package entries. The separate `npm-bootstrap.yml` workflow establishes those names using a **one-time, scope-limited stage-only granular access token**. All registry writes still run in GitHub Actions against the official registry. This workflow no longer runs interactive `npm login`; it never asks a running job to wait for a browser login.
 
-1. Dispatch **one-time npm package bootstrap** on main, confirmation `create-three-public-package-placeholders`.
-2. Review/approve the protected `npm-release` environment deployment.
-3. Open the npm CLI login URL from the running job and confirm the expected account in the browser. Do not paste passwords, tokens or recovery codes into logs/chat. The CLI manages its temporary credentials; scripts never read the credential file.
-4. The job checks `npm whoami` equals `berialcheng`, then stages metadata-only **0.0.0-bootstrap** candidates for absent names. npm creates public **0.0.0-stage** placeholders. These placeholders are not usable provider releases.
-5. **Never approve the 0.0.0-bootstrap candidates.** Reject those setup candidates in npm after package settings become available. The real version comes from the verified OIDC pipeline, not these tiny setup payloads.
-6. The job always attempts npm logout/revocation and removes only its runner-created private session directory. No credential/cache/session artifact is uploaded. If revocation fails or the job is interrupted, inspect/revoke the temporary login in npm before proceeding.
+### One-time credential setup (maintainer only)
 
-Only this explicit setup workflow may use an owner web-login session; it has no OIDC permission and cannot publish or approve a real version. Existing package entries are not modified. Failures after an upload may mean a placeholder was created: inspect npm before retrying. The login URL is an authorization request, not an access token; the expected owner check prevents another account from staging packages through that request.
+1. On npmjs.com, create a granular access token named for this bootstrap attempt. In **Packages and scopes**, select **Read and write (stage only)** and **Only select packages and scopes**, restricted to `@cursor-harness-provider`. Do not select All Packages. If the scope is unavailable, stop rather than silently broadening access.
+2. Leave **Bypass two-factor authentication** disabled and **Organizations** access at **No access**. Organization management permissions do not grant package publishing rights. Choose the shortest permitted expiration (npm requires at least one day), and revoke it immediately after use rather than waiting for expiry.
+3. Complete any npm security-key verification yourself. Copy the token directly into GitHub **Settings → Environments → npm-release → Environment secrets**, named **NPM_BOOTSTRAP_TOKEN**. Do not send the value to an agent/chat, commit it, put it in workflow inputs, or expose it in screenshots/logs. The agent must not read the generated token or the Secret field.
+
+Stage-only prevents direct publication of new versions, but is **not a general-purpose upload-only security boundary**: npm also permits deprecating versions and moving dist-tags with such a token. Review the scope/permissions before saving it. The script verifies the account with `npm whoami`; it cannot establish the token's server-side permissions from a Secret name. Never substitute a bypass-2FA or broadly scoped token.
+
+### Run the bootstrap and retire its credential
+
+1. Dispatch **one-time npm package bootstrap** on main, confirmation `create-three-public-package-placeholders`, then personally approve the protected `npm-release` environment deployment.
+2. Only the metadata staging step receives the Secret, mapped to `NODE_AUTH_TOKEN`. CLI installation, other jobs, and the real OIDC release never receive it. The script creates private, distinct npm config files containing only the literal `${NODE_AUTH_TOKEN}` reference; npm handles interpolation. No token value is written into command arguments or config files by the script, and no auth/cache artifact is uploaded.
+3. The job requires npm 11.21.0 and owner `berialcheng`, checks package absence, then stages metadata-only **0.0.0-bootstrap** candidates. npm creates public **0.0.0-stage** placeholders. Neither is a usable provider release. Existing package entries are not modified.
+4. Inspect the job result and npm staging queue. Ambiguous upload results stop immediately without retries or following packages; reconcile npm before any new dispatch.
+5. **After every attempt, including failures, revoke the bootstrap token on npm and delete the GitHub environment Secret NPM_BOOTSTRAP_TOKEN.** The job attempts local cleanup even on failure, but removing runner files or deleting the GitHub Secret does not revoke the npm token. It does not attempt `npm logout` or claim server-side revocation. If interrupted, perform the same credential cleanup before proceeding.
+6. **Never approve the 0.0.0-bootstrap candidates, and do not reject them yet.** Keep them pending while configuring Trusted Publishers and releasing the real version. Rejecting the only candidate of a new package can remove the package and its trust configuration, with a name-reuse cooldown. Only after the real **0.3.0** is publicly published and verified may a maintainer assess rejecting the bootstrap candidates. There is no automatic reject or unpublish.
+
+Only this explicit setup workflow may receive the one-time token. It has no OIDC permission and its script permits only fixed-name metadata staging, not real artifacts, direct publishing, approval, rejection or unpublishing. Formal releases still reject traditional token/config overrides and require all same-run OIDC release gates. A successful bootstrap is namespace setup, not a successful 0.3.0 release.
 
 ## GitHub and npm configuration
 
-Configure a GitHub environment named `npm-release`, with reviewer `berialcheng`, administrator bypass disabled, and only the **main branch** allowed (no tag patterns). Sole-owner self-review prevention must remain disabled so the human who dispatches can approve; this is not permission for an agent to bypass review. No npm token Secret is needed.
+Configure a GitHub environment named `npm-release`, with reviewer `berialcheng`, administrator bypass disabled, and only the **main branch** allowed (no tag patterns). Sole-owner self-review prevention must remain disabled so the human who dispatches can approve; this is not permission for an agent to bypass review. No npm token Secret is used for formal OIDC releases. The temporary `NPM_BOOTSTRAP_TOKEN` environment Secret is the one-time exception above and must be removed after that attempt.
 
 For each package, configure its Trusted Publisher:
 
@@ -72,4 +82,4 @@ Build helpers in `pack-utils.mjs` permit only offline pack/install. Archive extr
 
 The merged CI artifact contains exactly native.tgz, pi.tgz, opencode.tgz and release-manifest.json, retained seven days. A successful artifact run does not itself publish anything. Historical source preflight 41992048529 for commit 2a9d175 passed all seven jobs; publishing-workflow changes require their own current-run gates.
 
-References: [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/), [staged publishing](https://docs.npmjs.com/staged-publishing), [provenance](https://docs.npmjs.com/generating-provenance-statements).
+References: [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/), [staged publishing](https://docs.npmjs.com/staged-publishing), [stage-only token capabilities](https://docs.npmjs.com/about-access-tokens/#about-stage-only-tokens), [token creation](https://docs.npmjs.com/creating-and-viewing-access-tokens/), [provenance](https://docs.npmjs.com/generating-provenance-statements). The bootstrap cleanup guard is also documented by [pi-webtasks](https://github.com/JangMan-J/pi-webtasks/blob/9b620ed58e237e29430a1d5c4575a107007e913c/scripts/npm-bootstrap.sh); do not copy that project's direct-publish or unpublish steps into this stage-only workflow.

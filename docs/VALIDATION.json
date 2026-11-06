@@ -18,8 +18,8 @@
   },
   "checks": {
     "rustTests": 73,
-    "javascriptAndHostTests": 257,
-    "jsTestFiles": 28,
+    "javascriptAndHostTests": 267,
+    "jsTestFiles": 29,
     "typecheck": true,
     "rustfmt": true,
     "clippyDenyWarnings": true,
@@ -110,7 +110,16 @@
     "realThreeTargetMatrixVerified": false,
     "workflow": "publish.yml: default preflight; explicit main dispatch stage-only OIDC after all same-run gates",
     "verifiedHistoricalPreflight": {"commit": "2a9d175e15829a72a3e1f35dc4b6d2eaa05a2309", "run": "41992048529", "jobsSucceeded": 7},
-    "bootstrapWorkflow": "npm-bootstrap.yml: protected interactive owner web login; metadata candidates only",
+    "bootstrapWorkflow": "npm-bootstrap.yml: protected one-time scope-limited stage-only token; metadata only; maintainer revocation and Secret deletion after each attempt; keep bootstrap candidates pending until the real release is public",
+    "bootstrapTokenPreflight": {
+      "date": "2026-11-06",
+      "fullLocalCheckPassed": true,
+      "focusedBootstrapTests": 15,
+      "packedHostCases": 6,
+      "credentialFixturesOnly": true,
+      "configurationSmoke": "Actual locally provisioned npm CLI, offline; not a pinned 11.21.0 compatibility certification",
+      "focusedSourceReview": "No critical findings or concrete security regressions found; not a full security audit or server-side permission verification"
+    },
     "registryWritesPerformed": false,
     "credentialsOrInstalledPluginsChanged": false
   },

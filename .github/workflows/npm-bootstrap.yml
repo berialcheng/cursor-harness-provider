@@ -1,4 +1,5 @@
-# One-time namespace setup via owner web login; no real release or long-lived secret.
+# One-time namespace setup with a short-lived stage-only token; never a real release.
+# The maintainer must revoke NPM_BOOTSTRAP_TOKEN and delete the Secret after use.
 name: one-time npm package bootstrap
 on:
   workflow_dispatch:
@@ -27,34 +28,31 @@ jobs:
         with:
           node-version: "22.22.0"
           package-manager-cache: false
-      - name: Install pinned CLI and create private temporary owner session
+      - name: Install isolated pinned CLI without credentials
         run: |
           umask 077
-          mkdir -p "$RUNNER_TEMP/npm-bootstrap-session"
-          touch "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc"
-          npm install --prefix "$RUNNER_TEMP/bootstrap-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc" --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache"
-      - name: Owner web login — open the npm login URL and confirm in browser
-        timeout-minutes: 8
-        run: >-
-          node "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js" login
-          --auth-type=web --browser=false --registry=https://registry.npmjs.org/
-          --userconfig "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc"
-          --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache"
-          --fetch-retries=0
+          touch "$RUNNER_TEMP/bootstrap-installer.npmrc"
+          npm install --prefix "$RUNNER_TEMP/bootstrap-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/bootstrap-installer.npmrc" --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-install-cache"
       - name: Verify owner and stage only metadata setup candidates
+        timeout-minutes: 12
         env:
           BOOTSTRAP_NPM: ${{ inputs.confirmation }}
-        run: >-
-          node scripts/bootstrap-npm.mjs
-          "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js"
-          "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc"
-          "$RUNNER_TEMP/npm-bootstrap-candidates"
-      - name: Revoke temporary npm owner login
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_BOOTSTRAP_TOKEN is missing; no packages staged. See docs/PUBLISHING.md." >&2
+            exit 1
+          fi
+          node scripts/bootstrap-npm.mjs \
+            "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js" \
+            "$RUNNER_TEMP/npm-bootstrap-work"
+      - name: Remove only bootstrap files and report required credential cleanup
         if: ${{ always() }}
         run: |
-          if [ -f "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js" ]; then
-            node "$RUNNER_TEMP/bootstrap-cli/node_modules/npm/bin/npm-cli.js" logout --registry=https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/npm-bootstrap-session/session.npmrc" --globalconfig /dev/null --cache "$RUNNER_TEMP/npm-bootstrap-cache" --fetch-retries=0
-          fi
-      - name: Remove only the runner-created session directory
-        if: ${{ always() }}
-        run: rm -rf -- "$RUNNER_TEMP/npm-bootstrap-session"
+          rm -rf -- "$RUNNER_TEMP/npm-bootstrap-work" "$RUNNER_TEMP/npm-bootstrap-install-cache" "$RUNNER_TEMP/bootstrap-installer.npmrc"
+          printf '%s\n' \
+            '## One-time bootstrap cleanup' \
+            'Revoke the npm bootstrap token and delete the npm-release environment Secret NPM_BOOTSTRAP_TOKEN after this attempt, including failures.' \
+            'Deleting runner files or a GitHub Secret does not revoke the npm token. No server-side revocation was attempted by this job.' \
+            'Never approve bootstrap candidates. Keep them pending until the real version is publicly published and verified; do not reject the only candidate.' \
+            'If an upload outcome is uncertain, inspect npm before any retry.' >> "$GITHUB_STEP_SUMMARY"

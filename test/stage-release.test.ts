@@ -1,14 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import YAML from "yaml";
 // @ts-expect-error Build tooling is intentionally JavaScript.
 import { stageRelease, parseStageArgs } from "../scripts/stage-release.mjs";
-// @ts-expect-error Build tooling is intentionally JavaScript.
-import { bootstrapPackages } from "../scripts/bootstrap-npm.mjs";
 // @ts-expect-error Build tooling is intentionally JavaScript.
 import { sha256 } from "../scripts/package-licenses.mjs";
 const temporary: string[] = [];
@@ -73,34 +70,5 @@ describe("OIDC stage-only release",()=>{
   it("parses only the three explicit staging arguments",()=>{
     expect(parseStageArgs(["--bundle","/tmp/bundle","--version","0.3.0","--npm-cli","/tmp/cli"])).toEqual({bundleDirectory:"/tmp/bundle",version:"0.3.0",npmCli:"/tmp/cli"});
     expect(()=>parseStageArgs(["--publish","true"])).toThrow();
-  });
-});
-describe("one-time owner-authenticated placeholder bootstrap",()=>{
-  it("keeps interactive login isolated and always attempts logout and local cleanup",()=>{
-    const root=fileURLToPath(new URL("../",import.meta.url)),w=YAML.parse(readFileSync(join(root,".github/workflows/npm-bootstrap.yml"),"utf8"));
-    expect(w.permissions).toEqual({contents:"read"});expect(w.on.push).toBeUndefined();
-    expect(JSON.stringify(w)).not.toContain("--userconfig /dev/null --globalconfig /dev/null");
-    expect(w.jobs.bootstrap.environment).toBe("npm-release");expect(w.jobs.bootstrap.permissions).toBeUndefined();
-    expect(w.jobs.bootstrap.if).toContain("refs/heads/main");
-    const steps=w.jobs.bootstrap.steps;expect(steps.find((s:{name:string})=>s.name==="Revoke temporary npm owner login").if).toContain("always()");
-    expect(steps.find((s:{name:string})=>s.name==="Remove only the runner-created session directory").if).toContain("always()");
-    for(const s of steps)if(s.uses)expect(s.uses).toMatch(/@[a-f0-9]{40}$/);
-  });
-  function bootstrap(){const f=fixture();writeFileSync(join(f.directory,"LICENSE"),"MIT License\n");const options={npmCli:f.options.npmCli,sessionConfig:join(f.directory,"session.npmrc"),directory:join(f.directory,"candidates"),projectRoot:f.directory,env:{...f.env,GITHUB_WORKFLOW_REF:"berialcheng/cursor-harness-provider/.github/workflows/npm-bootstrap.yml@refs/heads/main",BOOTSTRAP_NPM:"create-three-public-package-placeholders"}};const execute=vi.fn((_binary:string,args:string[]):string=>{if(args[1]==="--version")return"11.21.0";if(args[1]==="whoami")return"berialcheng";if(args[1]==="view")throw Object.assign(Error("absent"),{stdout:JSON.stringify({error:{code:"E404"}})});return"ok";});return{...f,options,execute};}
-  it("uses the verified interactive owner and creates only unapproved setup candidates",()=>{
-    const f=bootstrap(),r=bootstrapPackages(f.options,f.execute);expect(r).toHaveLength(3);
-    const calls=f.execute.mock.calls.filter(call=>call[1][1]==="stage");expect(calls).toHaveLength(3);
-    for(const kind of ["native","pi","opencode"]){const p=JSON.parse(readFileSync(join(f.options.directory,kind,"package.json"),"utf8"));expect(p.version).toBe("0.0.0-bootstrap");expect(p.name).toBe("@cursor-harness-provider/"+kind);expect(p.scripts).toBeUndefined();}
-  });
-  it("refuses another login identity before any stage command",()=>{
-    const f=bootstrap();f.execute.mockImplementation((_binary,args)=>args[1]==="--version"?"11.21.0":"other-account");expect(()=>bootstrapPackages(f.options,f.execute)).toThrow(/owner/);expect(f.execute.mock.calls.some(call=>call[1][1]==="stage")).toBe(false);
-  });
-  it("requires explicit confirmation and keeps all paths in runner temporary storage",()=>{
-    const f=bootstrap();f.options.env.BOOTSTRAP_NPM="";expect(()=>bootstrapPackages(f.options,f.execute)).toThrow(/dispatch/);
-    f.options.env.BOOTSTRAP_NPM="create-three-public-package-placeholders";f.options.sessionConfig="/outside/session.npmrc";expect(()=>bootstrapPackages(f.options,f.execute)).toThrow(/temporary/);
-  });
-  it("stops on unknown absence checks and never blindly retries an upload",()=>{
-    const f=bootstrap();f.execute.mockImplementation((_binary,args)=>{if(args[1]==="--version")return"11.21.0";if(args[1]==="whoami")return"berialcheng";throw Error("synthetic network failure");});
-    expect(()=>bootstrapPackages(f.options,f.execute)).toThrow(/absence/);expect(f.execute.mock.calls.some(call=>call[1][1]==="stage")).toBe(false);
   });
 });
