@@ -1528,6 +1528,10 @@ mod tests {
     #[tokio::test]
     async fn h2c_unary_sends_raw_and_accepts_raw_or_valid_framed_response() -> Result<()> {
         for framed in [false, true] {
+            // Native trust initialization must not consume the fixture accept deadline.
+            let setup_started = Instant::now();
+            let client = fixture_client()?;
+            let setup_elapsed = setup_started.elapsed();
             let reply = vec![8, 1, 18, 2, b'o', b'k'];
             let expected = reply.clone();
             let (url, thread) = fixture(move |wire| {
@@ -1543,19 +1547,22 @@ mod tests {
                 };
                 wire.data(&body, true)
             })?;
-            assert_eq!(
-                unary(
-                    &fixture_client()?,
-                    &url,
-                    "/rpc",
-                    "fixture-token",
-                    b"raw".to_vec(),
-                    3000
-                )
-                .await?,
-                expected
+            let response = unary(
+                &client,
+                &url,
+                "/rpc",
+                "fixture-token",
+                b"raw".to_vec(),
+                3000,
+            )
+            .await;
+            // Always join before asserting, so client errors cannot hide fixture failures.
+            let server = joined(thread).await;
+            ensure!(
+                response.is_ok() && server.is_ok(),
+                "Unary fixture failed (framed={framed}, client setup={setup_elapsed:?}); client={response:?}; server={server:?}"
             );
-            joined(thread).await?;
+            assert_eq!(response?, expected);
         }
         Ok(())
     }
