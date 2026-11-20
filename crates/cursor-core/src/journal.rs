@@ -269,6 +269,12 @@ mod private_fs {
         fn unlinkat(fd: i32, name: *const std::ffi::c_char, flags: i32) -> i32;
         fn geteuid() -> u32;
         fn flock(fd: i32, operation: i32) -> i32;
+        // Intel Darwin must select the same 64-bit-inode ABI for the directory
+        // constructor and iterator, as Apple's headers and libc bindings do.
+        #[cfg_attr(
+            all(target_os = "macos", target_arch = "x86_64"),
+            link_name = "fdopendir$INODE64"
+        )]
         fn fdopendir(fd: i32) -> *mut std::ffi::c_void;
         #[cfg_attr(
             all(target_os = "macos", target_arch = "x86_64"),
@@ -1249,6 +1255,43 @@ mod tests {
             name: "host_write".into(),
             input: json!({"value":42}),
         }
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn descriptor_scan_uses_a_matching_native_abi_and_fresh_directory_cursor() -> Result<()> {
+        let tmp = tempfile::tempdir()?;
+        let root = tmp.path().canonicalize()?;
+        let dir = private_fs::directory(&root)?;
+        let first = format!("{}.bin", "a".repeat(64));
+        let second = format!("{}.bin", "b".repeat(64));
+        let third = format!("{}.bin", "c".repeat(64));
+        for name in [&first[..], &second[..], "not-a-scope.bin", "other.tmp"] {
+            drop(private_fs::create(&dir, name)?);
+        }
+        let (mut names, count) = private_fs::entries(&dir)?;
+        names.sort();
+        assert_eq!(names, vec![first.clone(), second.clone()]);
+        assert!(
+            count >= 4,
+            "Unrecognized entries still count toward the scan limit"
+        );
+        let (mut repeated, repeated_count) = private_fs::entries(&dir)?;
+        repeated.sort();
+        assert_eq!(
+            repeated, names,
+            "Each scan starts from a fresh descriptor cursor"
+        );
+        assert_eq!(repeated_count, count);
+        drop(private_fs::create(&dir, &third)?);
+        let (mut updated, updated_count) = private_fs::entries(&dir)?;
+        updated.sort();
+        assert_eq!(updated, vec![first, second, third]);
+        assert_eq!(
+            updated_count,
+            count + 1,
+            "Later scans observe newly created entries"
+        );
+        Ok(())
     }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
