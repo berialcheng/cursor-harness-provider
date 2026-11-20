@@ -1,0 +1,139 @@
+# Read-only: fetch public registry bytes, verify them, then run isolated host tests.
+# This workflow cannot stage, publish, approve, or switch an installed provider.
+name: verify published npm packages
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published version to verify
+        type: string
+        required: true
+        default: "0.3.0"
+      source_commit:
+        description: Exact source commit from the protected release and provenance
+        type: string
+        required: true
+        default: "fb6089e011b40f89c65bf66a4afcb43791040919"
+      expected_sha256:
+        description: JSON native/pi/opencode hashes from the successful protected staging audit
+        type: string
+        required: true
+        default: '{"native":"afb1854b50e4e17fdfd9bc9080b69d314ef64d6aed961b65efee0ce0141974d7","pi":"d5b9a248d1a4aca213ae0f1817c7995622350c8228eef29d5819d487b379fe1d","opencode":"8d85c78401fb34c614c1c6eea275ebfa08db40ca6b0add8df97994677f6b031b"}'
+permissions:
+  contents: read
+jobs:
+  registry-and-hosts:
+    if: ${{ github.repository == 'berialcheng/cursor-harness-provider' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+      OPENCODE_CURSOR_REQUIRE_HOST: "1"
+      CURSOR_NATIVE_REQUIRE_PI: "1"
+    steps:
+      - name: Validate source selector before checkout
+        shell: bash
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - name: Provision credential-free registry CLI
+        run: |
+          umask 077
+          touch "$RUNNER_TEMP/verify-installer-user.npmrc" "$RUNNER_TEMP/verify-installer-global.npmrc"
+          npm install --prefix "$RUNNER_TEMP/verify-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/verify-installer-user.npmrc" --globalconfig "$RUNNER_TEMP/verify-installer-global.npmrc" --cache "$RUNNER_TEMP/verify-installer-cache"
+      - name: Verify public metadata, registry bytes, signatures and attestations
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const env = process.env, kinds = ['native', 'pi', 'opencode'];
+          assert(!Object.keys(env).some(k => /^(?:NPM_TOKEN|NODE_AUTH_TOKEN|NPM_CONFIG_.*)$/i.test(k)), 'Credential/config override forbidden');
+          assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), env.SOURCE_COMMIT);
+          const expected = JSON.parse(env.EXPECTED_SHA256);
+          assert.deepEqual(Object.keys(expected).sort(), [...kinds].sort());
+          assert(kinds.every(k => /^[a-f0-9]{64}$/.test(expected[k])));
+          const root = process.cwd(), state = join(env.RUNNER_TEMP, 'published-verification');
+          mkdirSync(state, { mode: 0o700 });
+          const user = join(state, 'user.npmrc'), global = join(state, 'global.npmrc');
+          for (const path of [user, global]) writeFileSync(path, '', { flag: 'wx', mode: 0o600 });
+          const cli = join(env.RUNNER_TEMP, 'verify-cli/node_modules/npm/bin/npm-cli.js');
+          const config = ['--registry', 'https://registry.npmjs.org/', '--userconfig', user, '--globalconfig', global,
+            '--cache', join(state, 'cache'), '--fetch-retries', '0', '--fetch-timeout', '60000', '--no-update-notifier'];
+          const run = (args, cwd = state) => {
+            assert(['view', 'pack', 'install', 'audit', '--version'].includes(args[0]), 'Read-only npm commands only');
+            return execFileSync(process.execPath, [cli, ...args, ...config], {
+              cwd, encoding: 'utf8', timeout: 180000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+            });
+          };
+          assert.equal(run(['--version']).trim(), '11.21.0');
+          const archives = join(state, 'archives'); mkdirSync(archives, { mode: 0o700 });
+          const receipts = [], specs = [];
+          for (const kind of kinds) {
+            const name = '@cursor-harness-provider/' + kind, spec = name + '@' + env.RELEASE_VERSION;
+            const local = JSON.parse(readFileSync(join(root, 'packages', kind, 'package.json'), 'utf8'));
+            assert.equal(local.name, name); assert.equal(local.version, env.RELEASE_VERSION);
+            const meta = JSON.parse(run(['view', spec, '--json']));
+            assert.equal(meta.name, name); assert.equal(meta.version, env.RELEASE_VERSION); assert.equal(meta.license, 'MIT');
+            assert.deepEqual(meta.dependencies || {}, kind === 'native' ? {} : { '@cursor-harness-provider/native': env.RELEASE_VERSION });
+            assert.deepEqual(meta.optionalDependencies || {}, {});
+            const provenance = new URL(meta.dist.attestations.url);
+            assert.equal(provenance.origin, 'https://registry.npmjs.org');
+            assert(provenance.pathname.startsWith('/-/npm/v1/attestations/'));
+            const [packed] = JSON.parse(run(['pack', spec, '--ignore-scripts', '--json', '--pack-destination', archives]));
+            assert.equal(packed.filename, 'cursor-harness-provider-' + kind + '-' + env.RELEASE_VERSION + '.tgz');
+            const file = join(archives, packed.filename), bytes = readFileSync(file);
+            const hash = algorithm => createHash(algorithm).update(bytes).digest('hex');
+            assert.equal(hash('sha256'), expected[kind], 'Published bytes differ from protected release');
+            assert.equal(hash('sha1'), meta.dist.shasum);
+            assert.equal('sha512-' + createHash('sha512').update(bytes).digest('base64'), meta.dist.integrity);
+            renameSync(file, join(archives, kind + '.tgz'));
+            specs.push(spec); receipts.push({ name, version: meta.version, sha256: expected[kind], integrity: meta.dist.integrity, attestations: provenance.href });
+          }
+          const audit = join(state, 'audit'); mkdirSync(audit, { mode: 0o700 });
+          writeFileSync(join(audit, 'package.json'), JSON.stringify({ name: 'public-registry-audit', private: true }));
+          run(['install', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund', ...specs], audit);
+          const lock = JSON.parse(readFileSync(join(audit, 'package-lock.json'), 'utf8'));
+          assert.deepEqual(Object.keys(lock.packages).sort(), ['', ...kinds.map(k => 'node_modules/@cursor-harness-provider/' + k)].sort());
+          for (const r of receipts) {
+            const p = lock.packages['node_modules/' + r.name];
+            assert.equal(p.version, env.RELEASE_VERSION); assert.equal(p.integrity, r.integrity);
+            assert.equal(new URL(p.resolved).origin, 'https://registry.npmjs.org');
+          }
+          const signatureAudit = run(['audit', 'signatures'], audit);
+          console.log(signatureAudit.trim()); console.log(JSON.stringify(receipts, null, 2));
+          appendFileSync(env.GITHUB_STEP_SUMMARY, '## Public registry verification\n\nSource `' + env.SOURCE_COMMIT + '`; no staging or publication.\n\n```json\n' + JSON.stringify(receipts, null, 2) + '\n```\n\n' + signatureAudit + '\n');
+          NODE
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - name: Build only JS/types for test infrastructure
+        run: npm run build:js && npm run build:types
+      - name: Install pinned mock-test host
+        run: |
+          npm install --global --legacy-peer-deps @opencode/cli@2.2.5
+          opencode --version
+      - name: Test exactly the public registry tarballs in isolated hosts
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const expected = JSON.parse(process.env.EXPECTED_SHA256);
+          for (const k of ['native', 'pi', 'opencode']) {
+            const bytes = readFileSync(join(process.env.RUNNER_TEMP, 'published-verification/archives', k + '.tgz'));
+            assert.equal(createHash('sha256').update(bytes).digest('hex'), expected[k]);
+          }
+          NODE
+          npm run test:packages -- --archives "$RUNNER_TEMP/published-verification/archives"
