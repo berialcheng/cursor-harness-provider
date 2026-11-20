@@ -1259,9 +1259,16 @@ mod tests {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn descriptor_scan_uses_a_matching_native_abi_and_fresh_directory_cursor() -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir()?;
-        let root = tmp.path().canonicalize()?;
+        let parent = tmp.path().canonicalize()?;
+        // Temp-directory mode depends on the caller's umask. A public parent is
+        // allowed, but it must never itself pass as the private journal root.
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755))?;
+        assert!(private_fs::existing_directory(&parent).is_err());
+        let root = parent.join("private-scan");
         let dir = private_fs::directory(&root)?;
+        assert_eq!(dir.metadata()?.permissions().mode() & 0o777, 0o700);
         let first = format!("{}.bin", "a".repeat(64));
         let second = format!("{}.bin", "b".repeat(64));
         let third = format!("{}.bin", "c".repeat(64));

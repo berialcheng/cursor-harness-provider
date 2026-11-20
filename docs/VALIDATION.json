@@ -513,7 +513,7 @@
   ],
   "publicationQualification20261120": {
     "date": "2026-11-20",
-    "basedOnCommit": "e50e1dadfa10b76666639f058a21fa4440397350",
+    "basedOnCommit": "eb3b7161f40c56bb946cd40aa708149291cbdd6f",
     "status": "Fresh local qualification of the intended 0.3.0 source; final release requires its own same-commit GitHub build, aggregation and packed-host gates.",
     "earlierSections": "Dated historical snapshots; this section supersedes their current-check totals without rewriting their facts.",
     "checks": {
@@ -535,6 +535,7 @@
     "fixes": {
       "transportFixtures": "Real native-trust/client setup precedes unchanged server accept/read deadlines, including URL-dependent proxies; failed clients and assertion panics still join fixture servers. Production transport behavior is unchanged by the fixture fix.",
       "darwinDirectoryAbi": "Pair fdopendir$INODE64 with readdir$INODE64 on macOS x86_64, matching Apple SDK/libc declarations. An x86_64 C probe using existing Rosetta reproduced legacy reclen=12 failure and corrected 32/32/40-byte entries; this is not bare-metal macOS15 certification. Direct Rust regression checks repeated/noise/new-entry scans. Descriptor anchoring, NOFOLLOW, ownership, quotas and deadlines remain unchanged.",
+      "directoryFixturePrivacy": "Full qualification also passes with CI umask 022. The scan fixture deliberately rejects a 0755 parent and creates/checks a 0700 child; the previous direct-TempDir fixture failure was reproduced with umask 022, then the corrected fixture passed under both 022 and 077. Production privacy checks were not relaxed.",
       "deferredCommits": "Flush deferred state/replies at 8 frames, 1 MiB of queued reply capacity or 250 ms checked between frames. A single admitted reply may exceed the soft batch threshold. Every ready-queue path checks cancellation and idle expiry; commit-before-ordered-ack and conservative retry policy remain unchanged.",
       "regressions": "Count/reply-byte bounds, an already-expired ready-queue deadline and continuously replenished liveness all fail against the previous receive loop and pass with the fix."
     },
