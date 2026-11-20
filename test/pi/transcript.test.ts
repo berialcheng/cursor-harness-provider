@@ -50,11 +50,58 @@ describe("normalized Pi transcript -> native V3 DTO", () => {
   it.each(["/tmp/image.png", "https://example.invalid/image.png", "data:image/png;base64,aGVsbG8=", "%%%", "a", "aaaa===", "ab=="])("rejects non-inline/corrupt data %s", data => {
     expect(() => inlineImage(data, "image/png")).toThrow(/inline|base64|image/i);
   });
+  it("keeps the exact accepted set and error class of the scan-first image validator", () => {
+    const reference = (data: string): string => {
+      if (!data || data.length > 7 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data) || data.length % 4 === 1) return "invalid";
+      const bytes = Buffer.from(data, "base64");
+      if (!bytes.length || bytes.length > 5 * 1024 * 1024 || bytes.toString("base64").replace(/=+$/, "") !== data.replace(/=+$/, "")) return "oversized";
+      return "ok";
+    };
+    const actual = (data: string): string => {
+      try { inlineImage(data, "image/png"); return "ok"; } catch (error) { return /paths and URLs/.test(String(error)) ? "invalid" : "oversized"; }
+    };
+    // Exhaustive short strings: canonical/non-canonical tails, padding, URL-safe and foreign characters.
+    const alphabet = ["A", "Q", "R", "g", "+", "/", "=", "-", "_", " ", "."];
+    let level = [""];
+    for (let length = 1; length <= 5; length++) {
+      level = level.flatMap(prefix => alphabet.map(c => prefix + c));
+      for (const data of level) if (actual(data) !== reference(data)) throw new Error("Validator differs for " + JSON.stringify(data));
+    }
+    const cases = [5 * 1024 * 1024 - 1, 5 * 1024 * 1024, 5 * 1024 * 1024 + 1, 1, 2, 3, 4096].flatMap(size => {
+      const canonical = Buffer.alloc(size, 0xa5).toString("base64"), body = canonical.replace(/=+$/, "");
+      return [canonical, body, body + "=", body + "==", body + "===", body.slice(0, -1) + "B", body + "\n", "\u00e9" + body.slice(1), body.replace(/\+/g, "-")];
+    });
+    for (const data of cases) expect(actual(data)).toBe(reference(data));
+  });
   it("rejects oversized/unsupported images and referenced result media", () => {
     expect(() => inlineImage(Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64"), "image/png")).toThrow();
     expect(() => inlineImage("aGVsbG8=", "application/pdf")).toThrow();
     expect(() => validateTranscript({ prompt: [{ role: "tool", content: [{ type: "tool-result", toolCallId: "c", toolName: "read",
       output: { type: "content", value: [{ type: "image-url", url: "https://example.invalid" }] } }] }], tools: [] })).toThrow(/Referenced/);
+  });
+  it("bounds total inline images in prompts and tool results, including hook-replacement validation", () => {
+    const image = { type: "file", mediaType: "image/png", data: "aGVsbG8=" };
+    expect(() => validateTranscript({ prompt: [{ role: "user", content: Array.from({ length: 17 }, () => image) }], tools: [] })).toThrow(/16 images/);
+    const large = Buffer.alloc(5 * 1024 * 1024).toString("base64");
+    expect(() => validateTranscript({ prompt: [{ role: "tool", content: [{ type: "tool-result", toolCallId: "fixture", toolName: "read",
+      output: { type: "content", value: Array.from({ length: 5 }, () => ({ type: "image-data", mediaType: "image/png", data: large })) } }] }], tools: [] })).toThrow(/20 MiB/);
+  });
+  it("quarantines malformed/cancelled tool calls while retaining later safe conversation and valid calls", () => {
+    const dto = toNativeTranscript(context({ messages: [
+      { role: "assistant", api: "cursor-native-rust", provider: "cursor", model: "auto", timestamp: 1, usage: emptyUsage(), stopReason: "aborted", content: [
+        { type: "text", text: "Partial safe text" }, { type: "toolCall", id: "bad", name: "read", arguments: { path: "DO_NOT_REPLAY_PARTIAL" }, argumentsError: "malformed" },
+      ] },
+      { role: "toolResult", toolCallId: "bad", toolName: "read", isError: true, content: [{ type: "text", text: "not executed" }], timestamp: 2 },
+      { role: "user", content: "Safe next task", timestamp: 3 },
+      { role: "assistant", api: "cursor-native-rust", provider: "cursor", model: "auto", timestamp: 4, usage: emptyUsage(), stopReason: "toolUse", content: [
+        { type: "toolCall", id: "good", name: "read", arguments: { path: "safe fixture" } },
+      ] },
+      { role: "toolResult", toolCallId: "good", toolName: "read", isError: false, content: [{ type: "text", text: "allowed result" }], timestamp: 5 },
+    ] }));
+    expect(JSON.stringify(dto)).not.toContain("DO_NOT_REPLAY_PARTIAL");
+    expect(JSON.stringify(dto)).toContain("Partial safe text"); expect(JSON.stringify(dto)).toContain("Safe next task");
+    expect(dto.prompt.filter(m => m.role === "tool")).toHaveLength(1);
+    expect(JSON.stringify(dto.prompt.filter(m => m.role === "tool"))).toContain('"toolCallId":"good"');
   });
   it("preserves preferred JSON schemas but rejects required grammar guarantees", () => {
     const tool = { name: "read", description: "fixture", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } };

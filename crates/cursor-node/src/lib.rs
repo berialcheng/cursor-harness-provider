@@ -37,6 +37,8 @@ impl NativeEngine {
             if request.len() > 64 * 1024 * 1024 {
                 return Err(error("Cursor host request exceeds 64 MiB"));
             }
+            let _parse = cursor_core::resource::Lease::reserve(request.len().saturating_mul(2))
+                .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))?;
             let input =
                 serde_json::from_str(&request).map_err(|_| error("Invalid Cursor host request"))?;
             let core = engine
@@ -87,6 +89,20 @@ impl NativeEngine {
                 .map_err(|_| error("Cannot remove Rust Cursor scope safely"))
         })
     }
+    #[napi(js_name = "resourceStats")]
+    pub fn resource_stats(&self) -> String {
+        self.core.resource_stats()
+    }
+    #[napi(js_name = "maintainCache")]
+    pub fn maintain_cache(&self, env: Env, scope: String, apply: Option<bool>) -> Result<JsObject> {
+        let engine = self.core.clone();
+        env.spawn_future(async move {
+            engine
+                .maintain_cache(&scope, apply.unwrap_or(false))
+                .await
+                .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
+        })
+    }
     #[napi]
     pub fn shutdown(&self) {
         self.core.shutdown();
@@ -111,12 +127,10 @@ impl NativeStream {
         let stream = self.core.clone();
         env.spawn_future(async move {
             stream
-                .next()
+                .next_json()
                 .await
-                .map(|e| {
-                    serde_json::to_string(&e).map_err(|_| error("Cannot encode Rust Cursor event"))
-                })
                 .transpose()
+                .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
         })
     }
     #[napi]

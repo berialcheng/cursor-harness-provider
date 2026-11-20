@@ -7,13 +7,25 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use prost::Message;
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
     pb,
-    types::{PendingTool, ServerAction, StartInput, WireContext},
+    sha256::Sha256,
+    types::{validate_model_parameters, PendingTool, ServerAction, StartInput, WireContext},
 };
+
+#[path = "model_metadata.rs"]
+mod model_metadata;
+pub use model_metadata::{available_models_request, enrich_model_list};
+
+const MAX_WIRE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_WIRE_FIELDS: usize = 65_536;
+const MAX_VALUE_DEPTH: usize = 64;
+const EXEC_CASES: &[u32] = &[
+    2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 16, 17, 18, 20, 21, 22, 23, 28, 32, 33, 34, 35, 36,
+];
+const EXEC_METADATA: &[(u32, u8)] = &[(1, 0), (15, 2), (19, 2), (55, 0)];
 
 const MAX_BLOBS: usize = 512;
 const MAX_BLOB_BYTES: usize = 32 * 1024 * 1024;
@@ -974,7 +986,12 @@ fn requested_model(input: &StartInput) -> Result<String> {
     } else {
         model
     };
+    validate_model_parameters(&input.model_parameters)?;
     if let Some(effort) = input.reasoning.as_deref().filter(|s| !s.is_empty()) {
+        ensure!(
+            input.model_parameters.is_empty(),
+            "Legacy reasoning cannot be combined with explicit modelParameters; select an advertised parameter set"
+        );
         ensure!(
             ["none", "minimal", "low", "medium", "high", "xhigh", "max"].contains(&effort),
             "Unsupported reasoning effort"
@@ -989,6 +1006,43 @@ fn requested_model(input: &StartInput) -> Result<String> {
     Ok(model.to_owned())
 }
 
+/// Admit payload staging before any builder allocation. The multiplier covers
+/// JSON escaping, parsed transcript, replay JSON, prost, staged blobs and Vec
+/// growth simultaneously. Existing blobs are borrowed, not copied. Object and
+/// allocator overhead remain outside the payload (not RSS) contract.
+pub(crate) fn request_build_lease(
+    input: &StartInput,
+    checkpoint: Option<&[u8]>,
+) -> Result<crate::resource::Lease> {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_add(b.len())
+                .ok_or_else(|| std::io::Error::other("request_size_overflow"))?;
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut size = Count(0);
+    for value in input.prompt.iter().chain(&input.tools) {
+        serde_json::to_writer(&mut size, value)?;
+    }
+    let bytes = size
+        .0
+        .saturating_add(input.workspace.len())
+        .saturating_add(input.model_id.len())
+        .saturating_add(16 * 1024);
+    Ok(crate::resource::Lease::reserve(
+        bytes
+            .saturating_mul(32)
+            .saturating_add(checkpoint.map_or(0, |c| c.len()).saturating_mul(6)),
+    )?)
+}
+
 /// Build AgentClientMessage.run_request. All blob references are SHA-256
 /// addressed. A checkpoint never overrides the authoritative host transcript.
 pub fn build_request(
@@ -996,6 +1050,18 @@ pub fn build_request(
     conversation_id: &str,
     checkpoint: Option<&[u8]>,
     context: &mut WireContext,
+) -> Result<Vec<u8>> {
+    build_request_admitted(input, conversation_id, checkpoint, context, |_| Ok(()))
+}
+
+/// Admission sees the prospective retained payload BEFORE any context mutation.
+/// Existing blobs stay borrowed, including a restored 128 MiB store.
+pub(crate) fn build_request_admitted(
+    input: &StartInput,
+    conversation_id: &str,
+    checkpoint: Option<&[u8]>,
+    context: &mut WireContext,
+    admit: impl FnOnce(usize) -> Result<()>,
 ) -> Result<Vec<u8>> {
     ensure!(
         !conversation_id.trim().is_empty(),
@@ -1072,6 +1138,12 @@ pub fn build_request(
             checkpoint.len() <= MAX_BLOB_BYTES,
             "Checkpoint exceeds {MAX_BLOB_BYTES} bytes"
         );
+        validate_checkpoint(
+            checkpoint,
+            CheckpointShape::State,
+            0,
+            &mut WireBudget::default(),
+        )?;
         pb::ConversationStateStructure::decode(checkpoint).context("Invalid Cursor checkpoint")?;
         // Preserve unknown checkpoint fields too: prost ordinarily discards them.
         let mut state = Vec::new();
@@ -1120,6 +1192,15 @@ pub fn build_request(
         }),
         requested_model: Some(pb::RequestedModel {
             model_id: requested_model(input)?,
+            max_mode: input.max_mode,
+            parameters: input
+                .model_parameters
+                .iter()
+                .map(|parameter| pb::RequestedModelModelParameterbytes {
+                    id: parameter.id.clone(),
+                    value: parameter.value.clone(),
+                })
+                .collect(),
             ..Default::default()
         }),
         conversation_id: Some(conversation_id.to_owned()),
@@ -1132,9 +1213,25 @@ pub fn build_request(
     bytes_field(&mut run_bytes, 1, &conversation_state);
     let mut request = Vec::new();
     bytes_field(&mut request, 1, &run_bytes);
+    let workspace = input.workspace.clone();
+    let retained = context
+        .blobs
+        .values()
+        .chain(blobs.added.values())
+        .map(Vec::capacity)
+        .sum::<usize>()
+        + tools_json
+            .iter()
+            .map(crate::resource::value_bytes)
+            .sum::<usize>()
+        + workspace.capacity();
+    admit(retained)?;
+    if !blobs.added.is_empty() {
+        context.blob_generation += 1;
+    }
     context.blobs.extend(blobs.added);
     context.tools = tools_json;
-    context.workspace = input.workspace.clone();
+    context.workspace = workspace;
     Ok(request)
 }
 
@@ -1205,20 +1302,105 @@ pub fn cancel_message() -> Vec<u8> {
     ))
 }
 
+// Never prost-decode an untrusted native capability body just to refuse it.
+// Only these bounded correlation scalars belong in a typed rejection; all
+// nested collections, contents, credentials and unknown payloads stay opaque.
+const MAX_EXEC_SCALAR_BYTES: usize = 16 * 1024;
+
+fn validate_exec_metadata(fields: &[WireField<'_>], budget: &mut WireBudget) -> Result<()> {
+    for field in fields {
+        match field.number {
+            1 => {
+                u32::try_from(read_varint(field.data, &mut 0)?)
+                    .context("Invalid Cursor exec id")?;
+            }
+            15 => validate_exec_string(field.data)?,
+            19 => {
+                let span = wire_fields_bounded(field.data, budget)?;
+                validate_fields(&span, &[(1, 2), (2, 2), (3, 0), (4, 2)], &[], true)?;
+                for field in span {
+                    match field.number {
+                        1 | 2 | 4 => validate_exec_string(field.data)?,
+                        3 => {
+                            u32::try_from(read_varint(field.data, &mut 0)?)
+                                .context("Invalid Cursor trace flags")?;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            55 => ensure!(
+                read_varint(field.data, &mut 0)? <= 1,
+                "Invalid Cursor exec boolean"
+            ),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_exec_string(bytes: &[u8]) -> Result<()> {
+    ensure!(
+        bytes.len() <= MAX_EXEC_SCALAR_BYTES,
+        "Cursor exec scalar exceeds byte limit"
+    );
+    std::str::from_utf8(bytes).context("Invalid Cursor exec scalar UTF-8")?;
+    Ok(())
+}
+
+fn non_mcp_exec_envelope(fields: &[WireField<'_>], budget: &mut WireBudget) -> Result<Vec<u8>> {
+    let mut envelope = Vec::new();
+    for field in fields {
+        if field.number == 1 || field.number == 15 {
+            envelope.extend_from_slice(field.raw);
+        } else if !EXEC_METADATA
+            .iter()
+            .any(|(number, _)| *number == field.number)
+        {
+            let scalars: &[u32] = match field.number {
+                2 | 14 | 16 => &[1, 2],         // command and working_directory
+                3 | 4 | 7 | 8 | 9 | 20 => &[1], // path or URL
+                18 => &[2],                     // resource URI, not the server or download path
+                _ => &[],
+            };
+            let mut body = Vec::new();
+            if !scalars.is_empty() {
+                let mut seen = HashSet::new();
+                for scalar in wire_fields_bounded(field.data, budget)? {
+                    if scalars.contains(&scalar.number) {
+                        ensure!(
+                            scalar.wire_type == 2,
+                            "Invalid Cursor rejection scalar wire type"
+                        );
+                        ensure!(
+                            seen.insert(scalar.number),
+                            "Duplicate Cursor rejection scalar"
+                        );
+                        validate_exec_string(scalar.data)?;
+                        body.extend_from_slice(scalar.raw);
+                    }
+                }
+            }
+            bytes_field(&mut envelope, field.number, &body);
+        }
+    }
+    Ok(envelope)
+}
+
 fn handle_exec(
     exec: pb::ExecServerMessage,
     raw: &[u8],
     context: &WireContext,
+    budget: &mut WireBudget,
 ) -> Result<Vec<ServerAction>> {
     use pb::exec_client_message::Message as Out;
     use pb::exec_server_message::Message as In;
     // prost drops unknown oneof variants. Do not dispatch an earlier known
     // variant when a newer, unknown capability is also present on the wire.
-    const KNOWN: &[u32] = &[
-        1, 15, 19, 55, 2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 16, 17, 18, 20, 21, 22, 23, 28, 32, 33, 34,
-        35, 36,
-    ];
-    if wire_fields(raw)?.iter().any(|f| !KNOWN.contains(&f.number)) {
+    let fields = wire_fields_bounded(raw, budget)?;
+    if fields.iter().any(|f| {
+        !EXEC_CASES.contains(&f.number) && !EXEC_METADATA.contains(&(f.number, f.wire_type))
+    }) {
         return Ok(vec![
             ServerAction::Reply(exec_throw(
                 &exec,
@@ -1498,6 +1680,30 @@ fn handle_exec(
     ])
 }
 
+// All InteractionQuery cases are denied (RequestContext is an exec case).
+// Validate only the envelope and correlation ID; never traverse or prost-decode
+// prohibited args, including repeated questions, plan phases and future bodies.
+fn denied_query_envelope(raw: &[u8], budget: &mut WireBudget) -> Result<Vec<u8>> {
+    let fields = wire_fields_bounded(raw, budget)?;
+    validate_message_oneof(
+        &fields,
+        &[2, 3, 4, 5, 6, 7, 8, 9],
+        &[(1, 0)],
+        "Cursor interaction query",
+    )?;
+    let mut envelope = Vec::new();
+    for field in fields {
+        if field.number == 1 {
+            u32::try_from(read_varint(field.data, &mut 0)?)
+                .context("Invalid Cursor interaction query id")?;
+            envelope.extend_from_slice(field.raw);
+        } else {
+            bytes_field(&mut envelope, field.number, b"");
+        }
+    }
+    Ok(envelope)
+}
+
 fn handle_query(query: pb::InteractionQuery, raw: &[u8]) -> Result<Vec<ServerAction>> {
     use pb::interaction_query::Query as In;
     use pb::interaction_response::Result as Out;
@@ -1574,13 +1780,31 @@ pub fn diagnostic_shape(bytes: &[u8]) -> Value {
                 .take(32)
                 .map(|f| (f.number, f.wire_type))
                 .collect::<Vec<_>>());
-        }
-        if let Ok(exec) = pb::ExecServerMessage::decode(field.data) {
-            shape["hasExecId"] = json!(!exec.exec_id.trim().is_empty());
-            if let Some(pb::exec_server_message::Message::McpArgs(args)) = exec.message {
-                shape["hasToolCallId"] = json!(!args.tool_call_id.trim().is_empty());
-                shape["toolNameLength"] = json!(args.tool_name.len());
-                shape["piProvider"] = json!(args.provider_identifier == "pi");
+            // Do not prost-decode an unvalidated exec just for diagnostics:
+            // hostile repeated arguments could amplify allocations here too.
+            shape["hasExecId"] = json!(exec_fields.iter().any(|f| {
+                f.number == 15
+                    && f.wire_type == 2
+                    && std::str::from_utf8(f.data).is_ok_and(|s| !s.trim().is_empty())
+            }));
+            if let Some(mcp) = exec_fields
+                .iter()
+                .find(|f| f.number == 11 && f.wire_type == 2)
+            {
+                if let Ok(args) = wire_fields(mcp.data) {
+                    shape["hasToolCallId"] = json!(args.iter().any(|f| {
+                        f.number == 3
+                            && f.wire_type == 2
+                            && std::str::from_utf8(f.data).is_ok_and(|s| !s.trim().is_empty())
+                    }));
+                    shape["toolNameLength"] = json!(args
+                        .iter()
+                        .find(|f| f.number == 5 && f.wire_type == 2)
+                        .map_or(0, |f| f.data.len()));
+                    shape["piProvider"] = json!(args
+                        .iter()
+                        .any(|f| f.number == 4 && f.wire_type == 2 && f.data == b"pi"));
+                }
             }
         }
     }
@@ -1592,8 +1816,9 @@ pub fn diagnostic_shape(bytes: &[u8]) -> Value {
 pub fn handle_message(bytes: &[u8], context: &mut WireContext) -> Result<Vec<ServerAction>> {
     use pb::agent_server_message::Message as In;
     blob_usage(&context.blobs)?;
-    let fields = wire_fields(bytes)?;
-    // Inspect both oneof envelopes before prost can discard unknown variants or
+    let mut budget = WireBudget::default();
+    let fields = wire_fields_bounded(bytes, &mut budget)?;
+    // Inspect nested oneof envelopes before prost can discard unknown variants or
     // select/merge a known case from an ambiguous message. Field 8 is explicitly
     // TTFT metadata in AgentServerMessage, not another action case.
     validate_message_oneof(
@@ -1604,7 +1829,7 @@ pub fn handle_message(bytes: &[u8], context: &mut WireContext) -> Result<Vec<Ser
     )?;
     if let Some(update) = fields.iter().find(|f| f.number == 1) {
         validate_message_oneof(
-            &wire_fields(update.data)?,
+            &wire_fields_bounded(update.data, &mut budget)?,
             // Field 27 is an observed newer observational update. It is not
             // an exec/query: ignore it without progress, execution or finish.
             // Mixed known+unknown cases remain ambiguous and are rejected.
@@ -1614,6 +1839,91 @@ pub fn handle_message(bytes: &[u8], context: &mut WireContext) -> Result<Vec<Ser
             &[(25, 0)], // message_started_at_ms, not an update case.
             "Cursor interaction update",
         )?;
+    }
+    if let Some(exec) = fields.iter().find(|f| f.number == 2) {
+        let exec_fields = wire_fields_bounded(exec.data, &mut budget)?;
+        // An unknown case alone is thrown by handle_exec. It still counts as
+        // an executable oneof case here, so mixed/duplicate cases never reach
+        // prost dispatch, regardless of their order.
+        let cases: Vec<_> = exec_fields
+            .iter()
+            .find(|f| !EXEC_METADATA.iter().any(|(number, _)| *number == f.number))
+            .map(|f| f.number)
+            .into_iter()
+            .collect();
+        validate_message_oneof(&exec_fields, &cases, EXEC_METADATA, "Cursor exec")?;
+        validate_exec_metadata(&exec_fields, &mut budget)?;
+        if !exec_fields.iter().any(|f| f.number == 11) {
+            // Dispatch only a shaped empty known case (plus bounded rejection
+            // scalars). No native body reaches AgentServerMessage::decode.
+            // This also bounds ignored RequestContext/MCP-state request bodies.
+            let envelope = non_mcp_exec_envelope(&exec_fields, &mut budget)?;
+            let shaped = pb::ExecServerMessage::decode(envelope.as_slice())
+                .context("Invalid Cursor exec envelope")?;
+            return handle_exec(shaped, &envelope, context, &mut budget);
+        }
+        if let Some(mcp) = exec_fields.iter().find(|f| f.number == 11) {
+            // Preflight the raw map AND recursive Value bytes before prost can
+            // allocate maps, merge duplicate keys or select a Value kind.
+            if validate_mcp_args(mcp.data, &mut budget).is_err() {
+                let id = exec_fields
+                    .iter()
+                    .find(|f| f.number == 1)
+                    .map(|f| read_varint(f.data, &mut 0))
+                    .transpose()?
+                    .unwrap_or(0);
+                let exec_id = exec_fields
+                    .iter()
+                    .find(|f| f.number == 15)
+                    .map(|f| std::str::from_utf8(f.data))
+                    .transpose()?
+                    .unwrap_or("");
+                let envelope = pb::ExecServerMessage {
+                    id: u32::try_from(id).context("Invalid Cursor exec id")?,
+                    exec_id: exec_id.to_owned(),
+                    ..Default::default()
+                };
+                return Ok(vec![ServerAction::Reply(exec_throw(
+                    &envelope,
+                    "Invalid MCP argument protobuf Value (invalid or ambiguous); no host tool was executed",
+                ))]);
+            }
+        }
+    }
+    if let Some(kv) = fields.iter().find(|f| f.number == 4) {
+        let kv_fields = wire_fields_bounded(kv.data, &mut budget)?;
+        validate_message_oneof(&kv_fields, &[2, 3], &[(1, 0), (4, 2)], "Cursor KV request")?;
+        for field in kv_fields.iter().filter(|f| f.number == 2 || f.number == 3) {
+            let args = wire_fields_bounded(field.data, &mut budget)?;
+            validate_fields(
+                &args,
+                if field.number == 2 {
+                    &[(1, 2)]
+                } else {
+                    &[(1, 2), (2, 2)]
+                },
+                &[],
+                false,
+            )?;
+        }
+    }
+    if let Some(control) = fields.iter().find(|f| f.number == 5) {
+        validate_message_oneof(
+            &wire_fields_bounded(control.data, &mut budget)?,
+            &[1],
+            &[],
+            "Cursor exec control",
+        )?;
+    }
+    if let Some(query) = fields.iter().find(|f| f.number == 7) {
+        let envelope = denied_query_envelope(query.data, &mut budget)?;
+        let shaped = pb::InteractionQuery::decode(envelope.as_slice())
+            .context("Invalid Cursor interaction query envelope")?;
+        return handle_query(shaped, &envelope);
+    }
+    // Bound repeated/map checkpoint allocations before prost sees the nested payload.
+    if let Some(checkpoint) = fields.iter().find(|f| f.number == 3) {
+        validate_checkpoint(checkpoint.data, CheckpointShape::State, 0, &mut budget)?;
     }
     let message =
         pb::AgentServerMessage::decode(bytes).context("Invalid Cursor server protobuf")?;
@@ -1645,7 +1955,7 @@ pub fn handle_message(bytes: &[u8], context: &mut WireContext) -> Result<Vec<Ser
                 _ => Vec::new(),
             })
         }
-        Some(In::ExecServerMessage(exec)) => handle_exec(exec, payload(2)?, context),
+        Some(In::ExecServerMessage(exec)) => handle_exec(exec, payload(2)?, context, &mut budget),
         Some(In::InteractionQuery(query)) => handle_query(query, payload(7)?),
         Some(In::ConversationCheckpointUpdate(_)) => {
             let checkpoint = payload(3)?;
@@ -1657,12 +1967,6 @@ pub fn handle_message(bytes: &[u8], context: &mut WireContext) -> Result<Vec<Ser
         }
         Some(In::ExecServerControlMessage(_)) => Ok(vec![ServerAction::Liveness]),
         Some(In::KvServerMessage(kv)) => {
-            ensure!(
-                wire_fields(payload(4)?)?
-                    .iter()
-                    .all(|f| [1, 2, 3, 4].contains(&f.number)),
-                "Unsupported Cursor KV request rejected"
-            );
             let result = match kv.message.context("Unsupported Cursor KV request")? {
                 pb::kv_server_message::Message::GetBlobArgs(args) => {
                     let key = hex(&args.blob_id);
@@ -1681,6 +1985,7 @@ pub fn handle_message(bytes: &[u8], context: &mut WireContext) -> Result<Vec<Ser
                         args.blob_data.len(),
                     )?;
                     context.blobs.insert(key, args.blob_data);
+                    context.blob_generation += 1;
                     pb::kv_client_message::Message::SetBlobResult(pb::SetBlobResult::default())
                 }
             };
@@ -1705,13 +2010,24 @@ pub fn model_list_request() -> (String, Vec<u8>) {
     )
 }
 pub fn decode_model_list(bytes: &[u8]) -> Result<Value> {
+    let mut budget = WireBudget::default();
+    let fields = wire_fields_bounded(bytes, &mut budget)?;
+    let mut count = 0;
+    for field in fields.iter().filter(|f| f.number == 1) {
+        ensure!(field.wire_type == 2, "Invalid Cursor model list wire type");
+        count += 1;
+        ensure!(count <= 4096, "Too many Cursor models");
+        wire_fields_bounded(field.data, &mut budget)?;
+    }
     let response =
         pb::GetUsableModelsResponse::decode(bytes).context("Invalid Cursor model list")?;
     let mut models = std::collections::BTreeMap::new();
     for model in response.models {
         let id = model.model_id.trim();
         if id.is_empty() || model.max_mode == Some(true) {
-            // StartInput cannot request Max Mode or parameterized variants.
+            // This row requires a flag, not just its id. Advertise only modes
+            // attested by AvailableModels metadata, never infer them from a
+            // name containing "max" (which can be a directly runnable id).
             continue;
         }
         let name = [
@@ -1788,6 +2104,7 @@ fn validate_message_oneof(
     label: &str,
 ) -> Result<()> {
     let mut count = 0;
+    let mut seen_metadata = HashSet::new();
     for field in fields {
         if cases.contains(&field.number) {
             ensure!(field.wire_type == 2, "Invalid {label} oneof wire type");
@@ -1796,6 +2113,10 @@ fn validate_message_oneof(
             ensure!(
                 metadata.contains(&(field.number, field.wire_type)),
                 "Unsupported {label} wire shape rejected"
+            );
+            ensure!(
+                seen_metadata.insert(field.number),
+                "Duplicate {label} metadata rejected"
             );
         }
     }
@@ -1815,10 +2136,77 @@ fn read_varint(bytes: &[u8], offset: &mut usize) -> Result<u64> {
     }
     bail!("Protobuf varint too long")
 }
+#[derive(Clone, Copy)]
+enum CheckpointShape {
+    State,
+    Flat,
+    FileMap,
+    SubagentMap,
+    Subagent,
+    SubagentType,
+}
+
+// Recurse only into schema-known message fields. Blob references and unknown
+// checkpoint fields are opaque bytes and must stay lossless, not be guessed as messages.
+fn validate_checkpoint(
+    bytes: &[u8],
+    shape: CheckpointShape,
+    depth: usize,
+    budget: &mut WireBudget,
+) -> Result<()> {
+    ensure!(
+        depth <= MAX_VALUE_DEPTH,
+        "Checkpoint nesting limit exceeded"
+    );
+    ensure!(
+        bytes.len() <= MAX_BLOB_BYTES,
+        "Checkpoint exceeds byte limit"
+    );
+    for field in wire_fields_bounded(bytes, budget)? {
+        let child = match (shape, field.number) {
+            (CheckpointShape::State, 5 | 12 | 14) => Some(CheckpointShape::Flat),
+            (CheckpointShape::State, 15) => Some(CheckpointShape::FileMap),
+            (CheckpointShape::State, 16) => Some(CheckpointShape::SubagentMap),
+            (CheckpointShape::FileMap, 2) => Some(CheckpointShape::Flat),
+            (CheckpointShape::SubagentMap, 2) => Some(CheckpointShape::Subagent),
+            (CheckpointShape::Subagent, 1) => Some(CheckpointShape::State),
+            (CheckpointShape::Subagent, 4) => Some(CheckpointShape::SubagentType),
+            (CheckpointShape::SubagentType, 1..=4) => Some(CheckpointShape::Flat),
+            _ => None,
+        };
+        if let Some(child) = child {
+            ensure!(field.wire_type == 2, "Invalid checkpoint message wire type");
+            validate_checkpoint(field.data, child, depth + 1, budget)?;
+        }
+    }
+    Ok(())
+}
+
+struct WireBudget {
+    remaining: usize,
+}
+impl Default for WireBudget {
+    fn default() -> Self {
+        Self {
+            remaining: MAX_WIRE_FIELDS,
+        }
+    }
+}
+
 fn wire_fields(bytes: &[u8]) -> Result<Vec<WireField<'_>>> {
+    wire_fields_bounded(bytes, &mut WireBudget::default())
+}
+
+fn wire_fields_bounded<'a>(bytes: &'a [u8], budget: &mut WireBudget) -> Result<Vec<WireField<'a>>> {
+    ensure!(
+        bytes.len() <= MAX_WIRE_BYTES,
+        "Protobuf message exceeds byte limit"
+    );
     let mut offset = 0usize;
     let mut fields = Vec::new();
     while offset < bytes.len() {
+        ensure!(budget.remaining > 0, "Protobuf field budget exceeded");
+        budget.remaining -= 1;
         let start = offset;
         let tag = read_varint(bytes, &mut offset)?;
         let number = u32::try_from(tag >> 3).context("Invalid protobuf field number")?;
@@ -1857,6 +2245,114 @@ fn wire_fields(bytes: &[u8]) -> Result<Vec<WireField<'_>>> {
     }
     Ok(fields)
 }
+/// Reject duplicate singleton/map-entry fields instead of accepting protobuf's
+/// last-wins semantics for identities, parameter metadata and tool arguments.
+fn validate_fields(
+    fields: &[WireField<'_>],
+    known: &[(u32, u8)],
+    repeated: &[u32],
+    allow_unknown: bool,
+) -> Result<()> {
+    let mut seen = HashSet::new();
+    for field in fields {
+        if let Some((_, wire_type)) = known.iter().find(|(number, _)| *number == field.number) {
+            ensure!(
+                *wire_type == field.wire_type,
+                "Invalid protobuf field wire type"
+            );
+            ensure!(
+                repeated.contains(&field.number) || seen.insert(field.number),
+                "Duplicate protobuf singleton field"
+            );
+        } else {
+            ensure!(allow_unknown, "Unsupported protobuf field");
+        }
+    }
+    Ok(())
+}
+
+fn map_entry<'a>(fields: &[WireField<'a>]) -> Result<(&'a str, &'a [u8])> {
+    validate_fields(fields, &[(1, 2), (2, 2)], &[], false)?;
+    let key = fields
+        .iter()
+        .find(|f| f.number == 1)
+        .map(|f| std::str::from_utf8(f.data))
+        .transpose()?
+        .unwrap_or("");
+    let value = fields
+        .iter()
+        .find(|f| f.number == 2)
+        .context("Missing protobuf map value")?
+        .data;
+    Ok((key, value))
+}
+
+fn validate_mcp_args(bytes: &[u8], budget: &mut WireBudget) -> Result<()> {
+    let fields = wire_fields_bounded(bytes, budget)?;
+    validate_fields(
+        &fields,
+        &[(1, 2), (2, 2), (3, 2), (4, 2), (5, 2)],
+        &[2],
+        false,
+    )?;
+    let mut keys = HashSet::new();
+    for field in fields.iter().filter(|f| f.number == 2) {
+        let entry = wire_fields_bounded(field.data, budget)?;
+        let (key, value) = map_entry(&entry)?;
+        ensure!(keys.insert(key), "Duplicate MCP argument map key");
+        validate_value_wire(value, 0, budget)?;
+    }
+    Ok(())
+}
+
+fn validate_value_wire(bytes: &[u8], depth: usize, budget: &mut WireBudget) -> Result<()> {
+    ensure!(
+        depth <= MAX_VALUE_DEPTH,
+        "Protobuf Value exceeds nesting limit"
+    );
+    let fields = wire_fields_bounded(bytes, budget)?;
+    ensure!(
+        fields.len() == 1,
+        "Ambiguous or missing protobuf Value kind"
+    );
+    let field = &fields[0];
+    validate_fields(
+        &fields,
+        &[(1, 0), (2, 1), (3, 2), (4, 0), (5, 2), (6, 2)],
+        &[],
+        false,
+    )?;
+    match field.number {
+        1 | 4 => {
+            let value = read_varint(field.data, &mut 0)?;
+            ensure!(
+                value <= u64::from(field.number == 4),
+                "Invalid protobuf Value scalar"
+            );
+        }
+        5 => {
+            let entries = wire_fields_bounded(field.data, budget)?;
+            validate_fields(&entries, &[(1, 2)], &[1], false)?;
+            let mut keys = HashSet::new();
+            for entry in entries {
+                let fields = wire_fields_bounded(entry.data, budget)?;
+                let (key, value) = map_entry(&fields)?;
+                ensure!(keys.insert(key), "Duplicate protobuf Struct key");
+                validate_value_wire(value, depth + 1, budget)?;
+            }
+        }
+        6 => {
+            let items = wire_fields_bounded(field.data, budget)?;
+            validate_fields(&items, &[(1, 2)], &[1], false)?;
+            for item in items {
+                validate_value_wire(item.data, depth + 1, budget)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn put_varint(bytes: &mut Vec<u8>, mut value: u64) {
     while value >= 128 {
         bytes.push((value as u8 & 0x7f) | 0x80);
@@ -2783,7 +3279,7 @@ mod tests {
             assert!(context.blobs.is_empty());
             let typed = match exec_result(&actions)? {
                 Out::ReadResult(r) => {
-                    matches!(r.result, Some(pb::read_result::Result::Rejected(_)))
+                    matches!(r.result, Some(pb::read_result::Result::Rejected(rejected)) if rejected.path == "/not-read")
                 }
                 Out::LsResult(r) => matches!(r.result, Some(pb::ls_result::Result::Rejected(_))),
                 Out::WriteResult(r) => {
@@ -2807,7 +3303,9 @@ mod tests {
                     r.result,
                     Some(pb::write_shell_stdin_result::Result::Error(_))
                 ),
-                Out::FetchResult(r) => matches!(r.result, Some(pb::fetch_result::Result::Error(_))),
+                Out::FetchResult(r) => {
+                    matches!(r.result, Some(pb::fetch_result::Result::Error(error)) if error.url == "https://example.test/never-fetched")
+                }
                 Out::DiagnosticsResult(r) => {
                     matches!(r.result, Some(pb::diagnostics_result::Result::Rejected(_)))
                 }
@@ -2842,6 +3340,127 @@ mod tests {
                 _ => false,
             };
             assert!(typed, "Native request was not truthfully rejected");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn denied_exec_bodies_never_reach_prost_collections() -> Result<()> {
+        // ~128 KiB each, not an OOM probe. These represent 65,537 nested
+        // ComputerUse actions / parsed shell commands, beyond the field budget.
+        let repeated = [0x12, 0x00].repeat(MAX_WIRE_FIELDS + 1);
+        let shell = [
+            wrap_field(1, b"never-run"),
+            wrap_field(2, b"/never-open"),
+            wrap_field(8, &repeated),
+        ]
+        .concat();
+        let metadata = [vec![0x08, 7], wrap_field(15, b"exec-test")].concat();
+        for (case, body) in [(22, repeated), (2, shell)] {
+            let raw = [metadata.clone(), wrap_field(case, &body)].concat();
+            let fields = wire_fields(&raw)?;
+            // A deliberately tiny budget proves traversal/allocation is
+            // independent of the number of nested denied messages.
+            let mut budget = WireBudget { remaining: 8 };
+            let shaped = non_mcp_exec_envelope(&fields, &mut budget)?;
+            assert!(shaped.len() < 100);
+            let decoded = pb::ExecServerMessage::decode(shaped.as_slice())?;
+            match decoded.message {
+                Some(pb::exec_server_message::Message::ComputerUseArgs(args)) => {
+                    assert!(args.actions.is_empty());
+                }
+                Some(pb::exec_server_message::Message::ShellArgs(args)) => {
+                    assert!(args.parsing_result.is_none());
+                    assert!(args.simple_commands.is_empty());
+                }
+                _ => bail!("Unexpected shaped case"),
+            }
+            let actions = handle_message(&wrap_field(2, &raw), &mut WireContext::default())?;
+            assert!(matches!(
+                &actions[..],
+                [ServerAction::Reply(_), ServerAction::RejectedLocal]
+            ));
+            match exec_result(&actions)? {
+                pb::exec_client_message::Message::ComputerUseResult(r) => {
+                    assert!(matches!(
+                        r.result,
+                        Some(pb::computer_use_result::Result::Error(_))
+                    ));
+                }
+                pb::exec_client_message::Message::ShellResult(r) => match r.result {
+                    Some(pb::shell_result::Result::Rejected(rejected)) => {
+                        assert_eq!(rejected.command, "never-run");
+                        assert_eq!(rejected.working_directory, "/never-open");
+                    }
+                    _ => bail!("Shell was not rejected"),
+                },
+                _ => bail!("Unexpected rejection case"),
+            }
+        }
+        // Every native case is shaped, not just ComputerUse. Malformed nested
+        // bodies cannot be decoded, reflected or exposed as host tools.
+        for case in EXEC_CASES
+            .iter()
+            .copied()
+            .filter(|n| ![10, 11, 36].contains(n))
+        {
+            let scalars = matches!(case, 2 | 3 | 4 | 7 | 8 | 9 | 14 | 16 | 18 | 20);
+            let body = if scalars {
+                wrap_field(100, &[0xff])
+            } else {
+                vec![0xff]
+            };
+            let raw = [metadata.clone(), wrap_field(case, &body)].concat();
+            let fields = wire_fields(&raw)?;
+            let shaped = non_mcp_exec_envelope(&fields, &mut WireBudget { remaining: 1 })?;
+            assert_eq!(shaped, [metadata.clone(), wrap_field(case, b"")].concat());
+            let actions = handle_message(&wrap_field(2, &raw), &mut WireContext::default())?;
+            assert!(matches!(
+                &actions[..],
+                [ServerAction::Reply(_), ServerAction::RejectedLocal]
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn denial_validates_envelopes_and_only_bounded_correlation_scalars() -> Result<()> {
+        let metadata = [vec![0x08, 7], wrap_field(15, b"exec-test")].concat();
+        let valid = wrap_field(22, b"");
+        for extra in [
+            vec![0x08, 8], // duplicate id
+            wrap_field(15, b"other"),
+            wrap_field(99, b""),     // mixed unknown capability
+            wrap_field(7, b""),      // mixed known capability
+            wrap_field(19, &[0xff]), // malformed span metadata
+            wrap_field(19, &[wrap_field(1, b"a"), wrap_field(1, b"b")].concat()),
+            wrap_field(19, &wrap_field(1, &[0xff])),
+        ] {
+            let raw = [metadata.clone(), valid.clone(), extra].concat();
+            assert!(handle_message(&wrap_field(2, &raw), &mut WireContext::default()).is_err());
+        }
+        for bad in [
+            wrap_field(1, &[0xff]),
+            wrap_field(1, &vec![b'x'; MAX_EXEC_SCALAR_BYTES + 1]),
+            [wrap_field(1, b"a"), wrap_field(1, b"b")].concat(),
+            vec![0x08, 1],       // path with wrong wire type
+            vec![0x0a, 2, b'x'], // truncated scalar
+        ] {
+            let raw = [metadata.clone(), wrap_field(7, &bad)].concat();
+            assert!(handle_message(&wrap_field(2, &raw), &mut WireContext::default()).is_err());
+        }
+        let mut oversized_id = Vec::new();
+        varint_field(&mut oversized_id, 1, u64::from(u32::MAX) + 1);
+        for bad_metadata in [
+            oversized_id,
+            wrap_field(15, &[0xff]),
+            wrap_field(15, &vec![b'x'; MAX_EXEC_SCALAR_BYTES + 1]),
+        ] {
+            assert!(handle_message(
+                &wrap_field(2, &[bad_metadata, valid.clone()].concat()),
+                &mut WireContext::default()
+            )
+            .is_err());
         }
         Ok(())
     }
@@ -3022,6 +3641,163 @@ mod tests {
     }
 
     #[test]
+    fn denied_query_bodies_never_reach_prost_collections() -> Result<()> {
+        // Raw fixtures: 65,537 empty questions / plan phases (~128 KiB), not
+        // an OOM probe. The nested collections must stay completely opaque.
+        let questions = [0x12, 0x00].repeat(MAX_WIRE_FIELDS + 1);
+        let phases = [0x32, 0x00].repeat(MAX_WIRE_FIELDS + 1);
+        for (case, body) in [(3, wrap_field(1, &questions)), (7, wrap_field(1, &phases))] {
+            let mut raw = Vec::new();
+            varint_field(&mut raw, 1, u64::from(u32::MAX));
+            raw.extend(wrap_field(case, &body));
+            let shaped = denied_query_envelope(&raw, &mut WireBudget { remaining: 2 })?;
+            assert!(shaped.len() < 10);
+            let decoded = pb::InteractionQuery::decode(shaped.as_slice())?;
+            assert_eq!(decoded.id, u32::MAX);
+            match decoded.query {
+                Some(pb::interaction_query::Query::AskQuestionInteractionQuery(q)) => {
+                    assert!(q.args.is_none());
+                }
+                Some(pb::interaction_query::Query::CreatePlanRequestQuery(q)) => {
+                    assert!(q.args.is_none());
+                }
+                _ => bail!("Unexpected shaped query"),
+            }
+            let actions = handle_message(&wrap_field(7, &raw), &mut WireContext::default())?;
+            assert!(matches!(
+                &actions[..],
+                [ServerAction::Reply(_), ServerAction::RejectedLocal]
+            ));
+            let response = match reply(&actions)?.message {
+                Some(pb::agent_client_message::Message::InteractionResponse(r)) => r,
+                _ => bail!("Missing query refusal"),
+            };
+            assert_eq!(response.id, u32::MAX);
+            match response.result {
+                Some(pb::interaction_response::Result::AskQuestionInteractionResponse(r)) => {
+                    assert!(matches!(
+                        r.result.and_then(|r| r.result),
+                        Some(pb::ask_question_result::Result::Rejected(_))
+                    ));
+                }
+                Some(pb::interaction_response::Result::CreatePlanRequestResponse(r)) => {
+                    assert!(matches!(
+                        r.result.and_then(|r| r.result),
+                        Some(pb::create_plan_result::Result::Error(_))
+                    ));
+                }
+                _ => bail!("Wrong query refusal"),
+            }
+        }
+        // Even malformed prohibited bodies are not decoded, for EVERY case.
+        // VM setup has no refusal shape and must still terminate with an error.
+        for case in 2..=9 {
+            let raw = [vec![0x08, 17], wrap_field(case, &[0xff])].concat();
+            let shaped = denied_query_envelope(&raw, &mut WireBudget { remaining: 2 })?;
+            assert_eq!(shaped, [vec![0x08, 17], wrap_field(case, b"")].concat());
+            let result = handle_message(&wrap_field(7, &raw), &mut WireContext::default());
+            if case == 8 {
+                assert!(result.is_err());
+            } else {
+                assert!(matches!(
+                    &result?[..],
+                    [ServerAction::Reply(_), ServerAction::RejectedLocal]
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn query_denial_preserves_envelope_validation() -> Result<()> {
+        let valid = [vec![0x08, 17], wrap_field(3, b"")].concat();
+        for extra in [
+            vec![0x08, 18],      // duplicate id
+            wrap_field(3, b""),  // duplicate known case
+            wrap_field(9, b""),  // mixed observed case
+            wrap_field(99, b""), // mixed unknown case
+            vec![0x22, 2, 0],    // truncated case
+            vec![0xff],          // malformed tag
+        ] {
+            for raw in [
+                [valid.clone(), extra.clone()].concat(),
+                [extra, valid.clone()].concat(),
+            ] {
+                assert!(handle_message(&wrap_field(7, &raw), &mut WireContext::default()).is_err());
+            }
+        }
+        let mut oversized_id = Vec::new();
+        varint_field(&mut oversized_id, 1, u64::from(u32::MAX) + 1);
+        for raw in [
+            [oversized_id, wrap_field(3, b"")].concat(),
+            [wrap_field(1, b"bad"), wrap_field(3, b"")].concat(),
+            vec![0x18, 0], // case with wrong wire type
+            wrap_field(99, b""),
+            vec![0x08, 17], // missing case
+        ] {
+            assert!(handle_message(&wrap_field(7, &raw), &mut WireContext::default()).is_err());
+        }
+        let query = wrap_field(7, &valid);
+        for extra in [
+            wrap_field(7, &valid),
+            wrap_field(2, b""),
+            wrap_field(99, b""),
+        ] {
+            for raw in [
+                [query.clone(), extra.clone()].concat(),
+                [extra, query.clone()].concat(),
+            ] {
+                assert!(handle_message(&raw, &mut WireContext::default()).is_err());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn query_shaping_keeps_request_context_workspace_and_tools() -> Result<()> {
+        let mut context = WireContext {
+            workspace: "/tmp/current workspace".to_owned(),
+            tools: vec![json!({"type":"function","name":"read","inputSchema":{"type":"object"}})],
+            ..Default::default()
+        };
+        // RequestContext is exec #10, not an InteractionQuery. Ignored request
+        // bytes cannot change the legitimate current-workspace/tool response.
+        let raw = [
+            vec![0x08, 17],
+            wrap_field(15, b"context-id"),
+            wrap_field(10, &[0xff]),
+        ]
+        .concat();
+        let actions = handle_message(&wrap_field(2, &raw), &mut context)?;
+        assert!(matches!(&actions[..], [ServerAction::Reply(_)]));
+        let result = match reply(&actions)?.message {
+            Some(pb::agent_client_message::Message::ExecClientMessage(r)) => {
+                assert_eq!(r.id, 17);
+                assert_eq!(r.exec_id, "context-id");
+                r.message.context("Missing exec result")?
+            }
+            _ => bail!("Missing context reply"),
+        };
+        match result {
+            pb::exec_client_message::Message::RequestContextResult(r) => match r.result {
+                Some(pb::request_context_result::Result::Success(s)) => {
+                    let context = s.request_context.context("Missing context")?;
+                    assert_eq!(
+                        context.env.context("Missing env")?.workspace_paths,
+                        ["file:///tmp/current%20workspace"]
+                    );
+                    assert_eq!(context.tools.len(), 1);
+                    assert_eq!(context.tools[0].tool_name, "read");
+                    assert_eq!(context.web_search_enabled, Some(false));
+                }
+                _ => bail!("Context request was denied"),
+            },
+            _ => bail!("Wrong context response"),
+        }
+        Ok(())
+    }
+
+    #[test]
     fn hosted_web_approvals_are_denied() -> Result<()> {
         use pb::interaction_query::Query as In;
         use pb::interaction_response::Result as Out;
@@ -3144,6 +3920,38 @@ mod tests {
     }
 
     #[test]
+    fn retained_admission_failure_leaves_builder_context_transactional() -> Result<()> {
+        let mut context = WireContext {
+            blobs: HashMap::from([("01".into(), b"retained recovery".to_vec())]),
+            tools: vec![json!({"name":"old"})],
+            workspace: "/old".into(),
+            blob_generation: 0,
+        };
+        let before = context.blobs.clone();
+        let tools = context.tools.clone();
+        let input = basic_input()?;
+        let _build = request_build_lease(&input, None)?;
+        let mut reached = false;
+        let error = build_request_admitted(&input, "admission", None, &mut context, |bytes| {
+            reached = true;
+            assert!(bytes > b"retained recovery".len());
+            Err(crate::resource::Exhausted.into())
+        })
+        .expect_err("denied before install");
+        assert!(reached && error.is::<crate::resource::Exhausted>());
+        assert_eq!(context.blobs, before);
+        assert_eq!(context.tools, tools);
+        assert_eq!(context.workspace, "/old");
+        build_request_admitted(&input, "admission", None, &mut context, |bytes| {
+            assert!(bytes > 0);
+            Ok(())
+        })?;
+        assert_eq!(context.blobs["01"], b"retained recovery");
+        assert_eq!(context.workspace, input.workspace);
+        Ok(())
+    }
+
+    #[test]
     fn text_reasoning_tokens_finished_and_heartbeat_decode() -> Result<()> {
         use pb::interaction_update::Message as Update;
         let mut context = WireContext::default();
@@ -3221,6 +4029,334 @@ mod tests {
         assert!(build_request(&input, "invalid-image", None, &mut context).is_err());
         assert_eq!(context.blobs, before);
         assert!(build_request(&basic_input()?, "", None, &mut context).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn requested_model_max_and_parameters_have_exact_wire_bytes_and_legacy_defaults() -> Result<()>
+    {
+        use crate::types::ModelParameter;
+        let mut input = basic_input()?;
+        let mut context = WireContext::default();
+        let run = run_request(&build_request(&input, "legacy", None, &mut context)?)?;
+        assert_eq!(
+            run.requested_model
+                .context("No requested model")?
+                .encode_to_vec(),
+            b"\x0a\x07default"
+        );
+        input.model_id = "model".into();
+        input.max_mode = true;
+        input.model_parameters = vec![
+            ModelParameter {
+                id: "reasoning".into(),
+                value: "high".into(),
+            },
+            ModelParameter {
+                id: "context".into(),
+                value: "1m".into(),
+            },
+        ];
+        let run = run_request(&build_request(&input, "parameterized", None, &mut context)?)?;
+        let model = run.requested_model.context("No requested model")?;
+        // Independent raw RequestedModel oracle: fields 1=id, 2=maxMode,
+        // repeated 3={1=parameter id,2=parameter string value}.
+        assert_eq!(model.encode_to_vec(), b"\x0a\x05model\x10\x01\x1a\x11\x0a\x09reasoning\x12\x04high\x1a\x0d\x0a\x07context\x12\x021m");
+        assert_eq!(model.model_id, "model");
+        let before = context.blobs.clone();
+        input.reasoning = Some("high".into());
+        assert!(build_request(&input, "conflicting-reasoning", None, &mut context).is_err());
+        assert_eq!(context.blobs, before);
+        input.model_parameters.clear();
+        let run = run_request(&build_request(
+            &input,
+            "legacy-reasoning",
+            None,
+            &mut context,
+        )?)?;
+        assert_eq!(
+            run.requested_model.context("No requested model")?.model_id,
+            "model-high"
+        );
+        input.reasoning = None;
+        input.model_parameters = vec![
+            ModelParameter {
+                id: "reasoning".into(),
+                value: "high".into()
+            };
+            2
+        ];
+        let before = context.blobs.clone();
+        assert!(build_request(&input, "duplicate-parameters", None, &mut context).is_err());
+        assert_eq!(context.blobs, before);
+        Ok(())
+    }
+
+    fn wrap_field(number: u32, data: &[u8]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes_field(&mut bytes, number, data);
+        bytes
+    }
+
+    #[test]
+    fn nested_exec_oneof_rejects_both_orders_unknowns_and_duplicates() -> Result<()> {
+        let mut context = WireContext {
+            tools: vec![json!({"type":"function", "name":"read", "inputSchema":{"type":"object"}})],
+            ..Default::default()
+        };
+        let mcp = pb::McpArgs {
+            tool_name: "read".into(),
+            tool_call_id: "call-test".into(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let mut metadata = vec![0x08, 0x07]; // id
+        bytes_field(&mut metadata, 15, b"exec-test");
+        bytes_field(
+            &mut metadata,
+            19,
+            &pb::SpanContext {
+                trace_id: "trace".into(),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+        );
+        varint_field(&mut metadata, 55, 1);
+        let known = wrap_field(11, &mcp);
+        let valid = wrap_field(2, &[metadata.as_slice(), known.as_slice()].concat());
+        assert!(matches!(
+            &handle_message(&valid, &mut context)?[..],
+            [ServerAction::Tool(_)]
+        ));
+        for second in [wrap_field(7, b""), wrap_field(99, b""), known.clone()] {
+            for mixed in [
+                [metadata.as_slice(), known.as_slice(), second.as_slice()].concat(),
+                [metadata.as_slice(), second.as_slice(), known.as_slice()].concat(),
+            ] {
+                assert!(handle_message(&wrap_field(2, &mixed), &mut context).is_err());
+                assert!(context.blobs.is_empty());
+            }
+        }
+        for duplicate in [
+            vec![0x08, 0x08],
+            wrap_field(15, b"other-exec"),
+            wrap_field(19, b""),
+            vec![0xb8, 0x03, 0x00],
+        ] {
+            let bytes = wrap_field(
+                2,
+                &[metadata.as_slice(), known.as_slice(), duplicate.as_slice()].concat(),
+            );
+            assert!(handle_message(&bytes, &mut context).is_err());
+        }
+        // Metadata field numbers with incorrect wire types are never cases.
+        let bad = wrap_field(2, &[wrap_field(1, b""), known].concat());
+        assert!(handle_message(&bad, &mut context).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn nested_kv_and_query_oneofs_reject_before_any_blob_mutation_or_reply() -> Result<()> {
+        let mut context = WireContext::default();
+        context
+            .blobs
+            .insert(hex(b"existing"), b"preserved".to_vec());
+        let before = context.blobs.clone();
+        let get = wrap_field(
+            2,
+            &pb::GetBlobArgs {
+                blob_id: b"existing".to_vec(),
+            }
+            .encode_to_vec(),
+        );
+        let set = wrap_field(
+            3,
+            &pb::SetBlobArgs {
+                blob_id: b"new".to_vec(),
+                blob_data: b"must not store".to_vec(),
+            }
+            .encode_to_vec(),
+        );
+        let metadata = [vec![0x08, 0x07], wrap_field(4, b"")].concat();
+        let valid = wrap_field(4, &[metadata.as_slice(), get.as_slice()].concat());
+        assert!(matches!(
+            &handle_message(&valid, &mut context)?[..],
+            [ServerAction::Reply(_)]
+        ));
+        for second in [get.clone(), set.clone(), wrap_field(99, b"")] {
+            for mixed in [
+                [metadata.as_slice(), get.as_slice(), second.as_slice()].concat(),
+                [metadata.as_slice(), second.as_slice(), get.as_slice()].concat(),
+                [metadata.as_slice(), set.as_slice(), second.as_slice()].concat(),
+            ] {
+                assert!(handle_message(&wrap_field(4, &mixed), &mut context).is_err());
+                assert_eq!(context.blobs, before);
+            }
+        }
+        for fields in [
+            vec![wrap_field(9, b""), wrap_field(9, b"")],
+            vec![wrap_field(9, b""), wrap_field(2, b"")],
+            vec![wrap_field(2, b""), wrap_field(9, b"")],
+        ] {
+            assert!(handle_message(&wrap_field(7, &fields.concat()), &mut context).is_err());
+        }
+        Ok(())
+    }
+
+    fn raw_mcp_value(value: &[u8], extra_entry: Option<&[u8]>) -> Vec<u8> {
+        let mut entry = wrap_field(1, b"value");
+        bytes_field(&mut entry, 2, value);
+        let mut args = wrap_field(5, b"read");
+        bytes_field(&mut args, 3, b"call-test");
+        bytes_field(&mut args, 2, &entry);
+        if let Some(extra) = extra_entry {
+            bytes_field(&mut args, 2, extra);
+        }
+        let mut exec = vec![0x08, 0x07];
+        bytes_field(&mut exec, 15, b"exec-test");
+        bytes_field(&mut exec, 11, &args);
+        wrap_field(2, &exec)
+    }
+
+    #[test]
+    fn recursive_google_value_oneofs_and_map_entries_fail_closed() -> Result<()> {
+        let mut context = WireContext {
+            tools: vec![json!({"type":"function", "name":"read", "inputSchema":{"type":"object"}})],
+            ..Default::default()
+        };
+        let string = b"\x1a\x01x";
+        let boolean = b"\x20\x01";
+        let mut duplicate_key = wrap_field(1, b"value");
+        bytes_field(&mut duplicate_key, 2, string);
+        let mut duplicate_entry_value = wrap_field(1, b"nested");
+        bytes_field(&mut duplicate_entry_value, 2, string);
+        bytes_field(&mut duplicate_entry_value, 2, boolean);
+        let mut struct_entry = wrap_field(1, b"nested");
+        bytes_field(&mut struct_entry, 2, string);
+        let duplicate_struct = wrap_field(
+            5,
+            &[wrap_field(1, &struct_entry), wrap_field(1, &struct_entry)].concat(),
+        );
+        for value in [
+            [string.as_slice(), boolean.as_slice()].concat(),
+            [boolean.as_slice(), string.as_slice()].concat(),
+            [string.as_slice(), string.as_slice()].concat(),
+            [wrap_field(99, b""), string.to_vec()].concat(),
+            [string.to_vec(), wrap_field(99, b"")].concat(),
+            wrap_field(
+                6,
+                &wrap_field(1, &[string.as_slice(), boolean.as_slice()].concat()),
+            ),
+            wrap_field(5, &wrap_field(1, &duplicate_entry_value)),
+            wrap_field(
+                5,
+                &wrap_field(
+                    1,
+                    &[
+                        wrap_field(1, b"nested"),
+                        wrap_field(2, &[string.as_slice(), boolean.as_slice()].concat()),
+                    ]
+                    .concat(),
+                ),
+            ),
+            wrap_field(
+                5,
+                &wrap_field(
+                    1,
+                    &[
+                        wrap_field(1, b"nested"),
+                        wrap_field(2, &[boolean.as_slice(), string.as_slice()].concat()),
+                    ]
+                    .concat(),
+                ),
+            ),
+            duplicate_struct,
+        ] {
+            let actions = handle_message(&raw_mcp_value(&value, None), &mut context)?;
+            assert!(matches!(&actions[..], [ServerAction::Reply(_)]));
+            assert!(matches!(
+                reply(&actions)?.message,
+                Some(pb::agent_client_message::Message::ExecClientControlMessage(
+                    _
+                ))
+            ));
+        }
+        let actions = handle_message(&raw_mcp_value(string, Some(&duplicate_key)), &mut context)?;
+        assert!(matches!(
+            reply(&actions)?.message,
+            Some(pb::agent_client_message::Message::ExecClientControlMessage(
+                _
+            ))
+        ));
+        // A valid empty-key Struct map entry must not be confused with a
+        // missing Value kind or an ambiguous map entry.
+        let valid_struct = wrap_field(5, &wrap_field(1, &wrap_field(2, string)));
+        let actions = handle_message(&raw_mcp_value(&valid_struct, None), &mut context)?;
+        assert!(
+            matches!(&actions[..], [ServerAction::Tool(tool)] if tool.input == json!({"value":{"":"x"}}))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn checkpoint_field_budget_is_enforced_before_decode_and_restore() -> Result<()> {
+        let checkpoint = [0x0a, 0x00].repeat(MAX_WIRE_FIELDS + 1);
+        let mut context = WireContext::default();
+        assert!(handle_message(&wrap_field(3, &checkpoint), &mut context).is_err());
+        let request = input(
+            json!([{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]),
+            json!([]),
+        )?;
+        assert!(build_request(
+            &request,
+            "bounded-checkpoint",
+            Some(&checkpoint),
+            &mut context
+        )
+        .is_err());
+        // Nested maps share the same budget; a small outer message cannot hide a huge child.
+        let nested = wrap_field(16, &wrap_field(2, &wrap_field(1, &checkpoint)));
+        assert!(handle_message(&wrap_field(3, &nested), &mut context).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn wire_descriptor_cardinality_and_recursive_value_budgets_are_bounded() -> Result<()> {
+        let at_limit = [0x08, 0x00].repeat(MAX_WIRE_FIELDS);
+        assert_eq!(wire_fields(&at_limit)?.len(), MAX_WIRE_FIELDS);
+        assert!(wire_fields(&[at_limit.as_slice(), &[0x08, 0x00]].concat()).is_err());
+        assert!(
+            wire_fields_bounded(&[0x08, 0x00, 0x10, 0x00], &mut WireBudget { remaining: 1 })
+                .is_err()
+        );
+        let mut value = b"\x1a\x01x".to_vec();
+        for _ in 0..MAX_VALUE_DEPTH {
+            value = wrap_field(6, &wrap_field(1, &value));
+        }
+        assert!(validate_value_wire(&value, 0, &mut WireBudget::default()).is_ok());
+        value = wrap_field(6, &wrap_field(1, &value));
+        assert!(validate_value_wire(&value, 0, &mut WireBudget::default()).is_err());
+        let wide_list = wrap_field(6, &wrap_field(1, b"\x08\x00").repeat(MAX_WIRE_FIELDS / 2));
+        assert!(validate_value_wire(&wide_list, 0, &mut WireBudget::default()).is_err());
+        assert_eq!(
+            diagnostic_shape(&[0x08, 0x00].repeat(MAX_WIRE_FIELDS + 1)),
+            json!({"invalidWire":true})
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn directly_runnable_max_named_model_is_not_filtered_by_spelling() -> Result<()> {
+        let response = pb::GetUsableModelsResponse {
+            models: vec![pb::ModelDetails {
+                model_id: "gpt-5.1-codex-max".into(),
+                display_name: "Codex Max".into(),
+                ..Default::default()
+            }],
+        };
+        let models = decode_model_list(&response.encode_to_vec())?;
+        assert_eq!(models[0]["id"], "gpt-5.1-codex-max");
+        assert_eq!(models[0]["supportsImages"], false);
         Ok(())
     }
 

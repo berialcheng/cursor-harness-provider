@@ -2,6 +2,7 @@
   "projectName": "cursor-harness-provider",
   "version": "0.3.0",
   "date": "2026-11-04",
+  "latestValidationSection": "publicationQualification20261120",
   "platform": "darwin-arm64",
   "node": "22.22.0",
   "rust": "1.99.1",
@@ -98,7 +99,11 @@
     "rootPrivate": true,
     "workspacePublicMetadataPrepared": true,
     "version": "0.3.0",
-    "localPackedHosts": ["Pi 1.4.0", "Pi 1.5.0", "OpenCode 2.2.5/Bun"],
+    "localPackedHosts": [
+      "Pi 1.4.0",
+      "Pi 1.5.0",
+      "OpenCode 2.2.5/Bun"
+    ],
     "packedHostCasesPerRun": 6,
     "syntheticAggregationTests": true,
     "lockedDependencyReferenceCounts": {
@@ -109,7 +114,11 @@
     "reviewFollowups": "PAX total-byte budget, independent locked dependency membership and per-dependency notice path/content bindings fixed with regressions; not a full audit",
     "realThreeTargetMatrixVerified": false,
     "workflow": "publish.yml: default preflight; explicit main dispatch stage-only OIDC after all same-run gates",
-    "verifiedHistoricalPreflight": {"commit": "2a9d175e15829a72a3e1f35dc4b6d2eaa05a2309", "run": "41992048529", "jobsSucceeded": 7},
+    "verifiedHistoricalPreflight": {
+      "commit": "2a9d175e15829a72a3e1f35dc4b6d2eaa05a2309",
+      "run": "41992048529",
+      "jobsSucceeded": 7
+    },
     "bootstrapWorkflow": "npm-bootstrap.yml: protected one-time scope-limited stage-only token; metadata only; maintainer revocation and Secret deletion after each attempt; keep bootstrap candidates pending until the real release is public",
     "bootstrapTokenPreflight": {
       "date": "2026-11-06",
@@ -141,10 +150,525 @@
   },
   "remoteDecision": "Historical local-only decision was superseded by explicit source-push authorization; package publishing remains separate",
   "remoteCI": "See GitHub Actions for current results; this report records local validation",
+  "replacementFixes20261109": {
+    "date": "2026-11-09",
+    "basedOnCommit": "f734f08",
+    "status": "local source fixes; installed providers unchanged; no live Cursor certification",
+    "platform": "darwin-arm64",
+    "node": "22.22.0",
+    "checks": {
+      "fullNpmCheck": true,
+      "typecheck": true,
+      "rustfmt": true,
+      "clippyDenyWarnings": true,
+      "rustTests": 98,
+      "javascriptAndHostTests": 294,
+      "javascriptTestFiles": 34,
+      "sourceDisclosureGuard": true,
+      "diffWhitespaceCheck": true,
+      "offlinePackedHostCases": 6,
+      "additionalPackedPiCatalogRestartImageMaxCases": 1,
+      "pi14CliRepeatCases": 4
+    },
+    "hosts": {
+      "sdk": "Pi 1.4.0",
+      "cli": [
+        "Pi 1.4.0",
+        "Pi 1.5.0"
+      ],
+      "packedDefaultHost": "Pi 1.5.0 and OpenCode 2.2.5/Bun",
+      "backend": "localhost HTTP/2 mocks and synthetic credentials only"
+    },
+    "coverage": [
+      "steering/system/payload/dynamic-tool changes at reconciled host-result boundaries",
+      "known action ID/name/arguments/result identity and uncertain-action fencing",
+      "durable transcript lineage, history rewinds, tree navigation, manual compaction and restart",
+      "BTW-style copied-provider child continuation with a host-gated image result",
+      "auto/default alias, reasoning off, explicit Max and structured parameter variants",
+      "public catalog account/endpoint isolation and offline restoration",
+      "nested executable/KV/query/Value oneofs and checkpoint field/depth allocation budgets",
+      "external system-credential reuse without refresh-token shadow rotation"
+    ],
+    "nativeArtifact": {
+      "file": "cursor_native.darwin-arm64.416675f1546f4079.node",
+      "sha256": "416675f1546f4079135bdc5c0eb3e815825664c3ee2194834d49b90592654f49"
+    },
+    "review": "Independent focused static reviews; three follow-ups corrected with regressions; follow-up found no additional high/medium issues within scope, not a full security audit",
+    "liveCursorCalls": false,
+    "credentialsRead": false,
+    "installedProviderChanged": false,
+    "committedOrPublished": false,
+    "report": "docs/Pi_REPLACEMENT_REVIEW.md"
+  },
+  "auditRemediation20261110": {
+    "date": "2026-11-10",
+    "basedOnCommit": "d5aabf7",
+    "status": "local working-tree implementation and mock-backed acceptance; earlier uncommitted changes preserved",
+    "platform": "darwin-arm64",
+    "node": "22.22.0",
+    "rust": "1.99.1",
+    "fixedAuditItems": [
+      "M1",
+      "M2",
+      "M3",
+      "M4",
+      "M5",
+      "M6",
+      "M7",
+      "M8",
+      "M9",
+      "M10",
+      "L1",
+      "C1"
+    ],
+    "checks": {
+      "fullNpmCheck": true,
+      "typecheck": true,
+      "rustfmt": true,
+      "clippyDenyWarnings": true,
+      "productionBundleGuard": true,
+      "sourceDisclosureGuard": true,
+      "diffWhitespaceCheck": true,
+      "rustTests": 112,
+      "javascriptAndHostTests": 377,
+      "javascriptTestFiles": 42,
+      "javascriptTotalsIncludeReferenceOracles": true,
+      "offlinePackedHostCasesPerRun": 6,
+      "additionalPackedPiCapabilityCasesPerRun": 1,
+      "packedPiVersions": [
+        "1.4.0",
+        "1.5.0"
+      ],
+      "pi15CompatOwnershipLifecycleUnitTests": 25,
+      "pi14SourceCliRepeatCases": 4
+    },
+    "hosts": {
+      "sdk14": "Actual native SDK coverage includes compat images/parameters, isolated one-shots and stable host-tool continuation; tree/manual-compaction coverage remains SDK1.4",
+      "sdk15": "25 injected-engine compat ownership/lifecycle tests; actual native transport separately checked through isolated CLI",
+      "actualCli": [
+        "Pi1.4.0",
+        "Pi1.5.0",
+        "OpenCode2.2.5/Bun"
+      ],
+      "backend": "localhost HTTP/2 fixtures and synthetic credentials only",
+      "packed": "Actual offline-installed npm tarballs; host TypeScript shim loads packaged compiled backend, never workspace links"
+    },
+    "loader": {
+      "sourceEntry": "packages/pi/src/extension.ts",
+      "packedEntry": "dist/extension.ts",
+      "programmaticExport": "dist/index.js",
+      "sdkPeersExternal": true,
+      "hostRegistryExplicitlyInjected": true,
+      "physicalAndHostRegistriesShareDispatcher": true,
+      "legacyCursorApiUnchanged": true,
+      "owner": "Live ephemeral model UUID; untagged models require exact live parent sessionId; stale/ambiguous/mismatched owners rejected before auth",
+      "configCallbacks": "Capture their lifecycle-owned runtime; retained child configs cannot borrow a replacement runtime"
+    },
+    "coverage": [
+      "bounded connection/stream receive credit isolates a slow scope without unbounded queues",
+      "safe frozen KV validation/persistence without stale uploads; malformed/action uncertainty still fails closed",
+      "bounded retired recovery-root registry and honest unknown/forgotten remove errors",
+      "pre-prost shaping of prohibited exec and interaction query collections, including 65537-entry question/plan fixtures",
+      "shared OpenCode scope admission and terminal-EOF cleanup before finish preserve newer uncertainty ledgers",
+      "account-scoped OpenCode catalogs and async generation fences",
+      "64KiB/4096-chunk/15-second OAuth response limits, strict UTF8, sanitized failures and preserved aborts",
+      "omitted protobuf parameter values, injective opaque-effort IDs and exact-route collision guards",
+      "native compat image/model/tool continuation plus source/packed CLI registry integration",
+      "manifest-selected canonical pack staging retains old source DSOs; exact inventory/license/identity and capability evidence gates"
+    ],
+    "nativeArtifact": {
+      "file": "cursor_native.darwin-arm64.29a1c75f40ce7264.node",
+      "sha256": "29a1c75f40ce72646e15d4f4b576e120df4db8baa7d0975c3b55bad7bd405edb"
+    },
+    "packaging": {
+      "offlineInstall": true,
+      "lifecycleScriptsDisabled": true,
+      "nativeLoadWithoutToolchain": true,
+      "isolatedTypeConsumer": true,
+      "manifestExactNativeInventory": true,
+      "oldSourceDsoGenerationsRetained": true,
+      "requiredPackedHostCases": 6,
+      "requiredPackedPiCapabilityCases": 1,
+      "realThreeTargetMatrixRerun": false,
+      "registryWritesPerformed": false
+    },
+    "review": "Independent focused static reviews and follow-ups found no remaining concrete high/medium issues within the changed boundaries; not a full security audit",
+    "limits": [
+      "Freeze/KV and retired-root schedules include deterministic internal Rust fixtures, not live-host scheduling certification",
+      "Failed/aborted uncertain tool loops retain fences and may require reset/new session; recovery is not unconditional",
+      "No fresh vulnerability-database scan, cargo-audit/cargo-deny installation, live Cursor certification or all-platform certification",
+      "Headers/onResponse, strict structured-output/grammar enforcement, OpenCode parameterized picker and Windows journal remain unsupported"
+    ],
+    "localEvidenceLogs": {
+      "fullCheck": "/tmp/cursor-audit-fix-check.MldV5K",
+      "packedPi14Repeat": "/tmp/cursor-audit-fix-packed14.HxADsG",
+      "sdk15CompatRepeat": "/tmp/cursor-audit-fix-sdk15-final.zh5Ega",
+      "sourceGuard": "/tmp/cursor-audit-fix-source.Em3pd3",
+      "pi14SourceCliRepeat": "/tmp/cursor-audit-fix-source-cli14.haY1BT"
+    },
+    "liveCursorCalls": false,
+    "realCredentialsInspected": false,
+    "installedProvidersChanged": false,
+    "globalToolchainOrRegistryConfigurationChanged": false,
+    "committedPushedOrPublished": false
+  },
+  "operationalHardening20261110": {
+    "date": "2026-11-10",
+    "basedOnCommit": "d5aabf7",
+    "status": "implemented; full local mock-backed operational acceptance passed; uncommitted earlier work preserved",
+    "platform": {
+      "os": "macOS",
+      "osVersion": "26.7.1",
+      "arch": "arm64",
+      "node": "22.22.0",
+      "rust": "1.99.1",
+      "pi": [
+        "1.4.0",
+        "1.5.1"
+      ],
+      "opencode": "2.2.5",
+      "bun": "1.3.13"
+    },
+    "checks": {
+      "fullNpmCheck": true,
+      "typecheck": true,
+      "rustfmt": true,
+      "clippyDenyWarnings": true,
+      "productionBundleGuard": true,
+      "sourceDisclosureGuard": true,
+      "diffWhitespaceCheck": true,
+      "untrackedWhitespaceCheck": true,
+      "rustTests": 126,
+      "javascriptAndHostTests": 512,
+      "javascriptTestFiles": 48,
+      "javascriptTotalsIncludeReferenceOracles": true,
+      "sdk15InjectedOwnershipLifecycleTests": 121,
+      "sdk15TestFiles": 6,
+      "pi14SourceCliRepeatCases": 4,
+      "realNativeProcessFaultCases": 5,
+      "registeredCommandsWithRealNativeCases": 2,
+      "packedHostCasesPerRun": 6,
+      "packedPiCapabilityCasesPerRun": 1,
+      "packedPiVersions": [
+        "1.4.0",
+        "1.5.1"
+      ],
+      "unchangedPackedEvidenceGateCounts": true,
+      "isolatedNativeTypesConsumerES2023Only": true,
+      "rejectedNapiReceiverGcObjects": 5
+    },
+    "implemented": {
+      "providerAuthWait": {
+        "defaultMs": 25000,
+        "minMs": 1,
+        "maxMs": 30000,
+        "piEnv": "PI_CURSOR_AUTH_TIMEOUT_MS",
+        "opencodeEnv": "OPENCODE_CURSOR_AUTH_TIMEOUT_MS",
+        "scope": "provider-initiated waits, not human browser login, inference/tool lifetime or guaranteed cancellation of host transactions",
+        "callerAbortAndOwnerDisposalWin": true,
+        "piPayloadAndEventHooksShareBudget": true,
+        "lateResultsCannotUpdateExpiredRequests": true
+      },
+      "sharedLifecycleHelper": {
+        "export": "@cursor-harness-provider/native/lifecycle",
+        "sdkOrProtocolDependencies": false,
+        "coreRootDeclarationRequiresDomTypes": false,
+        "existingRustEngineMethodsCompatible": true
+      },
+      "recovery": {
+        "commands": [
+          "cursor.doctor",
+          "cursor.reset",
+          "cursor.cache"
+        ],
+        "knownExactScopesOnly": true,
+        "noArgumentsMutate": false,
+        "explicitUiOrHeadlessConfirmation": true,
+        "noAuthLookupForDiagnosticsOrMaintenance": true,
+        "resetDefaultAndMaxMs": 5000,
+        "resetTimeoutEnv": "PI_CURSOR_RESET_TIMEOUT_MS",
+        "timeoutLeavesFence": true,
+        "pendingNativeStartsDrainedBeforeRemove": true,
+        "preResetLateAuthOrReasoningAliasCannotReviveScope": true,
+        "toolEffectsUndone": false,
+        "automaticRetryOrDiscard": false
+      },
+      "cache": {
+        "knownScopeAnchorsRootWideMaintenance": true,
+        "dryRunDefault": true,
+        "expiredPayloadsBecomeFailClosedTombstones": true,
+        "lockedActiveCorruptUnknownSkipped": true,
+        "dryRunInventoryBytesModeMtimeUnchanged": true,
+        "missingRootsOrLocksNotCreatedByDryRun": true,
+        "committedLimitBytes": 1073741824,
+        "recognizedRecordLimit": 4096,
+        "serializedTemporaryLimitBytes": 209715200,
+        "sameProcessFifoAdmission": true,
+        "crossProcessQuotaLockWaitMs": 1000,
+        "excludedFromQuota": [
+          "unsafe/unrecognized files",
+          "lock files",
+          "legacy orphan staging"
+        ],
+        "backgroundDeletion": false,
+        "encryptionOrSecureErase": false
+      },
+      "memory": {
+        "trackedPayloadLimitBytes": 536870912,
+        "scope": "all engines in the same loaded core generation",
+        "reserveBeforeAllocationAndConsumerLease": true,
+        "largeRestoreLeaseTransferred": true,
+        "bothRequestBuildersAdmitBeforeInstallingContext": true,
+        "rssBounded": false,
+        "excluded": "incompletely tracked allocations, container/allocator/runtime/TLS overhead and independently loaded generations"
+      },
+      "routing": {
+        "runtimeLocalToolTurnPins": true,
+        "fullyReconciledSystemToolPayloadSteeringChangesRetained": true,
+        "exactAssistantCallAndResultIdentityRequired": true,
+        "accountEndpointModelBorrowing": false,
+        "reasoningAliasSharesResetControlIdentity": true,
+        "crossProcessRoutePinMigration": false
+      },
+      "faultCoverage": {
+        "processes": "independent journal contention, selected SIGKILL windows, corruption/truncation and cancel/remove/restart",
+        "io": "deterministic short-write, ENOSPC, EIO, sync and rename injection; no production environment fault switch",
+        "shutdownRegistryAdmissionRecheckedBeforeFilesystemCreation": true,
+        "powerLossCertified": false
+      }
+    },
+    "actualHostCoverage": {
+      "transport": "local HTTP/2 Cursor fixtures and real Rust N-API",
+      "packed": "actual offline-installed trio, external host SDK peers, no workspace package links",
+      "advancedCaseIncludes": [
+        "persisted catalog/restart",
+        "explicit image and advertised Max route",
+        "host compat.complete to native",
+        "actual Pi RPC doctor/cache dry-run/cache apply/reset",
+        "unknown-scope rejection and new-conversation verification"
+      ],
+      "sdk15": "injected engines for ownership/deadline/reset/pin/UI ordering; actual native transport checked separately through CLI",
+      "bun": "actual OpenCode text/read-allow/read-deny; Bun-specific hung-auth fault injection not separately qualified"
+    },
+    "nativeArtifact": {
+      "file": "cursor_native.darwin-arm64.eda9b985c1394151.node",
+      "sha256": "eda9b985c13941511ac5620e7eab121c45cb48a3b62960e2b2f24aca55f7b27e"
+    },
+    "lockSha256": {
+      "cargo": "70aca4231981abfe6ccb32996d9d22e067a04c676fa4ade84aeade06a9a447db",
+      "npm": "2f4058a7a1232be2b681718aa567537cc79d205ffb4d88444926ac5d402190e7"
+    },
+    "exactPackedArtifacts": {
+      "identicalBytesVerifiedOnBothPiVersions": true,
+      "native": {
+        "file": "native.tgz",
+        "sha256": "ed98e56005357ed206d21eb5460317d7183a50a82b616f0a46ca944406578929"
+      },
+      "pi": {
+        "file": "pi.tgz",
+        "sha256": "541849c445bad9f29c2d7f3314c6a30ca9314b2f80f8689878d79446bae8f840"
+      },
+      "opencode": {
+        "file": "opencode.tgz",
+        "sha256": "b150f6ade8c3bfc382a3871d9df84fe9f3639ea2d5abf7f9df94fb45bee94bb4"
+      },
+      "localOutputs": [
+        "/tmp/cursor-operational-artifacts15.tk3m6x/verified",
+        "/tmp/cursor-operational-artifacts14.moCJ1U/verified"
+      ],
+      "lifecycleScriptsDisabled": true,
+      "offlineInstall": true,
+      "nativeLoadWithoutRustToolchain": true,
+      "oldSourceDsosRetained": true
+    },
+    "evidenceLogs": {
+      "fullCheck": "/tmp/cursor-operational-check.RgNW6q",
+      "finalCurrentHostArtifacts": "/tmp/cursor-operational-artifacts15.tk3m6x/qualification.log",
+      "finalPi14Artifacts": "/tmp/cursor-operational-artifacts14.moCJ1U/qualification.log",
+      "sdk15": "/tmp/cursor-operational-sdk15.YpVePv",
+      "sourceCli14": "/tmp/cursor-operational-cli14.d0ZlOK"
+    },
+    "review": "Focused independent static reviews and corrected follow-ups; no remaining concrete high/medium findings in reviewed operational paths, not a full security audit",
+    "limits": [
+      "Filesystem calls and preceding local FIFO writes cannot be forcibly interrupted; adapter timeout is not transaction rollback",
+      "Recovery tombstones count toward the entry quota; no automatic forgetting of uncertain actions",
+      "Not all timing/crash windows, generated state sequences, Bun fault paths or minimum runtime/OS versions are certified",
+      "No fresh remote three-target matrix, vulnerability database scan, live Cursor or power-loss certification",
+      "This local evidence does not substitute for release commit/run/attempt/lock/target identity gates"
+    ],
+    "operationsRunbook": "docs/OPERATIONS.md",
+    "liveCursorCalls": false,
+    "realCredentialsInspected": false,
+    "installedProviderOrHostSettingsChanged": false,
+    "toolchainInstalledOrGlobalPathRegistryChanged": false,
+    "committedPushedOrPublished": false,
+    "registryWritesPerformed": false,
+    "registryStagingPerformed": false
+  },
   "limits": [
-    "not full upstream Pi Max/structured-parameterized model parity",
+    "only explicit advertised parameter/Max routes; OpenCode parameterized picker remains unsupported",
     "no HTTP response-header instrumentation in Pi",
     "Windows journal unsupported; only macOS arm64 locally tested",
     "no speed/billing/exactly-once guarantee"
-  ]
+  ],
+  "publicationQualification20261120": {
+    "date": "2026-11-20",
+    "basedOnCommit": "d5aabf79506cf01ffb50608e20dbc8fd517bb6ef",
+    "status": "Fresh local qualification of the intended 0.3.0 source; final release requires its own same-commit GitHub build, aggregation and packed-host gates.",
+    "earlierSections": "Dated historical snapshots; this section supersedes their current-check totals without rewriting their facts.",
+    "checks": {
+      "fullNpmCheck": true,
+      "typecheck": true,
+      "rustfmt": true,
+      "clippyDenyWarnings": true,
+      "rustTests": 145,
+      "javascriptAndHostTests": 515,
+      "javascriptTestFiles": 48,
+      "offlinePackedHostCases": 6,
+      "packedPiCapabilityCases": 1,
+      "nativeLoadWithoutToolchain": true,
+      "isolatedTypeConsumer": true,
+      "productionBundleGuard": true,
+      "sourceDisclosureGuard": true,
+      "diffWhitespaceCheck": true
+    },
+    "fixes": {
+      "transportFixtures": "Real native-trust/client setup precedes unchanged server accept/read deadlines, including URL-dependent proxies; failed clients and assertion panics still join fixture servers. Production transport behavior is unchanged by the fixture fix.",
+      "deferredCommits": "Flush deferred state/replies at 8 frames, 1 MiB of queued reply capacity or 250 ms checked between frames. A single admitted reply may exceed the soft batch threshold. Every ready-queue path checks cancellation and idle expiry; commit-before-ordered-ack and conservative retry policy remain unchanged.",
+      "regressions": "Count/reply-byte bounds, an already-expired ready-queue deadline and continuously replenished liveness all fail against the previous receive loop and pass with the fix."
+    },
+    "packaging": {
+      "nativeFiles": 290,
+      "nativeLicenseAssets": 277,
+      "piFiles": 9,
+      "opencodeFiles": 10,
+      "manifestSelectedNativeInventory": true,
+      "lockedLicenseReference": true,
+      "knownProtocBuildToolNoticeGaps": 9
+    },
+    "reviews": {
+      "packaging": "Scoped independent static review found no high/medium release blocker.",
+      "runtime": "One medium unbounded-deferral issue reproduced and fixed; focused independent rereview found no remaining concrete blocker. Not a full audit."
+    },
+    "releaseStateAtQualification": "Three bootstrap placeholders/candidates exist; none is a real provider release. Real 0.3.0 staging and public approval are still separate steps.",
+    "liveCursorCalls": false,
+    "realCredentialContentsRead": false,
+    "installedProvidersChanged": false,
+    "freshVulnerabilityDatabaseScan": false,
+    "allPlatformCertification": false
+  },
+  "performanceRound20261113": {
+    "date": "2026-11-13",
+    "basedOnCommit": "d5aabf7",
+    "status": "implemented in two same-day rounds on the preserved uncommitted tree; final full npm check and Pi1.4.0 packed 6+1 gates passed locally with the LTO artifact; Pi1.5.1 packed runs, SDK1.5.1 injected suite and remote CI not rerun",
+    "platform": {
+      "os": "macOS",
+      "osVersion": "26.7.1",
+      "arch": "arm64",
+      "node": "22.22.0",
+      "rust": "1.99.1",
+      "pi": [
+        "1.4.0"
+      ],
+      "opencode": "2.2.5"
+    },
+    "checks": {
+      "fullNpmCheck": true,
+      "typecheck": true,
+      "rustfmt": true,
+      "clippyDenyWarnings": true,
+      "sourceDisclosureGuard": true,
+      "diffWhitespaceCheck": true,
+      "rustTests": 139,
+      "javascriptAndHostTests": 515,
+      "javascriptTestFiles": 48,
+      "javascriptTotalsIncludeReferenceOracles": true,
+      "packedHostCasesPerRun": 6,
+      "packedPiCapabilityCasesPerRun": 1,
+      "packedPiVersions": [
+        "1.4.0"
+      ],
+      "notRerun": [
+        "packed Pi1.5.1 6+1 gates",
+        "SDK1.5.1 injected ownership/lifecycle suite",
+        "real-native process-fault and registered-command repeat runs outside npm check",
+        "remote three-target CI"
+      ]
+    },
+    "changes": {
+      "sha256": "ring's CPU-dispatched SHA-256 (already linked for TLS) replaces RustCrypto sha2, which has no aarch64 acceleration without its asm crate; byte-identical digests; 8 crates leave the locked graph and notice inventory",
+      "journalSizePass": "quota admission measures the exact encoded size without hashing; the committed bytes keep the same CURSRJ03 format and checksum",
+      "pooledConnectionRetirement": "an RPC that misses its header deadline retires its pooled HTTP/2 connection for later RPCs; streams already on it keep their driver; retry policy unchanged",
+      "frameHeadroom": "frames that only continue the current output kind shrink the per-frame reservation to 8x their text plus 64 KiB; persists, kind switches, replies, re-encoded results and tool exposure keep the full reservation",
+      "unaryBodies": "unary/usage DATA chunks are charged as received and joined once instead of reallocating per frame",
+      "piIdleTimeout": "Pi's disabled HTTP idle timeout (0 or 2147483647) and host values above one hour map to the 3600000 ms native maximum instead of failing every request; negative/non-integer values are still rejected; PI_CURSOR_STREAM_IDLE_TIMEOUT_MS validation unchanged",
+      "imageValidation": "Pi checks canonical base64 by round trip first and scans the alphabet only to classify a rejection; accepted set and error class are differential-tested against the previous validator; OpenCode byte images are bounded before zero-copy encoding",
+      "releaseProfile": "[profile.release] lto=fat, codegen-units=1, strip=symbols; panics still unwind; loadable stripped DSO verified by the packed-host gates",
+      "capacityDiagnostics": "commit failures on root capacity report cache_quota_exceeded/cache_entry_quota_exceeded/cache_scan_limit/cache_root_busy instead of a generic commit message; resourceStats adds numeric root usage from the latest commit (cacheCommittedBytes, cacheRecords, cacheDirectoryEntries, cacheScanLimitEntries); maintenance reports committedBytes/records/directoryEntries with limits; Pi doctor prints cacheRoot percentages and warns at 80%, and Pi adds /cursor.cache or /cursor.reset hints to capacity and expired-journal errors. Retention policy unchanged",
+      "readOnlyReplies": "only frames that change the blob store (SetBlob, request staging) commit before their reply; GetBlob answers and exec denials no longer pay a full journal commit; frozen GetBlob commits nothing",
+      "deferredCommits": "live turns coalesce checkpoint/blob-write commits across frames already queued (after one scheduler yield); acknowledgements follow their commit in arrival order, a failed commit sends none, any wait/tool/TurnEnded/exit commits first; parked and frozen RPCs commit every frame",
+      "keepalive": "pooled HTTP/2 connections send one PING per 20 s silent period while a stream is active; an unanswered PING (20 s) drops the connection so the existing conservative retry policy applies; idle pooled connections are never pinged",
+      "parallelDiscovery": "GetUsableModels and AvailableModels run concurrently; a failed base list returns at once and drops the metadata request; metadata alone never completes discovery",
+      "piTranscript": "Pi reuses the hook-normalized JSON as the native start request and compares action histories without hashing; tool-handoff fence equality unchanged"
+    },
+    "measurements": {
+      "method": "local release-mode ignored benchmark (removed after use), median of 7 Journal::save calls; synthetic 256 KiB blobs, 40 completed tools",
+      "saveMsBeforeAfter": {
+        "0MiB": [
+          17.9,
+          15
+        ],
+        "8MiB": [
+          64.8,
+          20.8
+        ],
+        "32MiB": [
+          204.2,
+          39.8
+        ],
+        "96MiB": [
+          577.5,
+          86.7
+        ]
+      },
+      "cacheTotalsMsPerSave": {
+        "1000 records": 26.4,
+        "4000 records": 110
+      },
+      "sha256MBps": {
+        "sha2": 370,
+        "ring": 2000
+      },
+      "piImageValidationMsPer5MiB": [
+        46.7,
+        7.8
+      ],
+      "rustTestSuiteSeconds": [
+        23.5,
+        10.9
+      ],
+      "nativeArtifactBytes": 9189856,
+      "lto": "adopted: final artifact 4795056 bytes (gzip 2252336) versus 9189856 (gzip 3182932); release build about 1m19s locally",
+      "piTurnMsAt2_3MB": {
+        "handoff": 13.6,
+        "continuation": 15.9,
+        "note": "fake engine, synthetic text history, before the transcript dedupe; each full pass is 1-2 ms"
+      }
+    },
+    "artifact": {
+      "file": "cursor_native.darwin-arm64.1ed42e90699ab0dc.node",
+      "sha256": "1ed42e90699ab0dc1c423f24d8874f0e0faf9bc4f8ee343c944dd93741d11ecc"
+    },
+    "openFindings": [
+      "cache-root growth is unchanged by decision: locks persist, expired payloads keep their size until access or consented maintenance, tombstones count toward 4096 records and scans fail beyond 16384 entries; capacity is now reported and named",
+      "resuming a session idle for more than 24 hours still needs an explicit reset; Pi now says so in the error",
+      "cache admission scans every record (about 27 us per entry on APFS) on each commit",
+      "each necessary commit still costs at least about 15 ms of F_FULLFSYNC on macOS",
+      "keepalive and deferred-commit gains depend on live server timing that local fixtures do not measure"
+    ],
+    "decisions": {
+      "cacheRetention": "user decision 2026-11-13: keep manual, consented maintenance; diagnostics only (no automatic deletion or tombstoning)",
+      "releaseProfile": "user approved fat LTO, codegen-units=1 and strip=symbols"
+    }
+  }
 }

@@ -76,18 +76,6 @@
       "noticeStatus": "upstream files copied"
     },
     {
-      "name": "block-buffer",
-      "version": "0.10.4",
-      "license": "MIT OR Apache-2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "normal",
-      "notices": [
-        "rust/block-buffer-0.10.4/LICENSE-APACHE",
-        "rust/block-buffer-0.10.4/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
       "name": "bytes",
       "version": "1.12.1",
       "license": "MIT",
@@ -181,30 +169,6 @@
       "noticeStatus": "upstream files copied"
     },
     {
-      "name": "cpufeatures",
-      "version": "0.2.17",
-      "license": "MIT OR Apache-2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "normal",
-      "notices": [
-        "rust/cpufeatures-0.2.17/LICENSE-APACHE",
-        "rust/cpufeatures-0.2.17/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
-      "name": "crypto-common",
-      "version": "0.1.7",
-      "license": "MIT OR Apache-2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "normal",
-      "notices": [
-        "rust/crypto-common-0.1.7/LICENSE-APACHE",
-        "rust/crypto-common-0.1.7/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
       "name": "ctor",
       "version": "0.2.9",
       "license": "Apache-2.0 OR MIT",
@@ -213,18 +177,6 @@
       "notices": [
         "rust/ctor-0.2.9/LICENSE-APACHE",
         "rust/ctor-0.2.9/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
-      "name": "digest",
-      "version": "0.10.7",
-      "license": "MIT OR Apache-2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "normal",
-      "notices": [
-        "rust/digest-0.10.7/LICENSE-APACHE",
-        "rust/digest-0.10.7/LICENSE-MIT"
       ],
       "noticeStatus": "upstream files copied"
     },
@@ -417,17 +369,6 @@
       "notices": [
         "rust/futures-util-0.3.34/LICENSE-APACHE",
         "rust/futures-util-0.3.34/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
-      "name": "generic-array",
-      "version": "0.14.7",
-      "license": "MIT",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "normal",
-      "notices": [
-        "rust/generic-array-0.14.7/LICENSE"
       ],
       "noticeStatus": "upstream files copied"
     },
@@ -1409,18 +1350,6 @@
       "noticeStatus": "upstream files copied"
     },
     {
-      "name": "sha2",
-      "version": "0.10.9",
-      "license": "MIT OR Apache-2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "normal",
-      "notices": [
-        "rust/sha2-0.10.9/LICENSE-APACHE",
-        "rust/sha2-0.10.9/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
       "name": "shlex",
       "version": "2.0.1",
       "license": "MIT OR Apache-2.0",
@@ -1731,19 +1660,6 @@
       "noticeStatus": "upstream files copied"
     },
     {
-      "name": "typenum",
-      "version": "1.20.1",
-      "license": "MIT OR Apache-2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "normal",
-      "notices": [
-        "rust/typenum-1.20.1/LICENSE",
-        "rust/typenum-1.20.1/LICENSE-APACHE",
-        "rust/typenum-1.20.1/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
       "name": "unicode-ident",
       "version": "1.0.27",
       "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
@@ -1827,18 +1743,6 @@
       "notices": [
         "rust/uuid-1.29.0/LICENSE-APACHE",
         "rust/uuid-1.29.0/LICENSE-MIT"
-      ],
-      "noticeStatus": "upstream files copied"
-    },
-    {
-      "name": "version_check",
-      "version": "0.9.5",
-      "license": "MIT/Apache-2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "dependencyScope": "build-or-test",
-      "notices": [
-        "rust/version_check-0.9.5/LICENSE-APACHE",
-        "rust/version_check-0.9.5/LICENSE-MIT"
       ],
       "noticeStatus": "upstream files copied"
     },

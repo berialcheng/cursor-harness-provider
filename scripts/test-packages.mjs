@@ -4,8 +4,9 @@ import { accessSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, 
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { packageKinds, readNotice, sha256, verifyPackagedLicenses } from "./package-licenses.mjs";
-import { extractPackage, isolatedNpm, treeFiles } from "./pack-utils.mjs";
+import { packageKinds, readNotice } from "./package-licenses.mjs";
+import { extractPackage, isolatedNpm } from "./pack-utils.mjs";
+import { packPackageArtifact, verifyPackageArtifact } from "./package-artifacts.mjs";
 
 const defaultRoot = fileURLToPath(new URL("../", import.meta.url));
 function executable(name) {
@@ -53,9 +54,10 @@ export function runPackagePreflight({ projectRoot = defaultRoot, archivesDirecto
   const temporary = mkdtempSync(join(tmpdir(), "cursor-package-preflight-"));
   try {
     const npm = isolatedNpm(temporary);
-    const packed = archivesDirectory ? null : JSON.parse(npm.run(["pack", "--json", "--pack-destination", temporary,
-      ...packageKinds.flatMap(kind => ["--workspace", "packages/" + kind])], projectRoot));
-    if (packed && packed.length !== packageKinds.length) throw new Error("Unexpected workspace pack result");
+    const packed = archivesDirectory ? null : packageKinds.map(kind => packPackageArtifact({
+      source: join(projectRoot, "packages", kind), stagingDirectory: join(temporary, "stage-" + kind),
+      outputDirectory: temporary, kind, projectRoot, npm,
+    }));
     const summaries = [], archives = [];
     for (const kind of packageKinds) {
       const expected = JSON.parse(readNotice(join(projectRoot, "packages", kind), "package.json"));
@@ -65,22 +67,7 @@ export function runPackagePreflight({ projectRoot = defaultRoot, archivesDirecto
       readNotice(dirname(archive), archive.split("/").pop());
       archives.push(archive);
       const base = extractPackage(archive, join(temporary, "unpacked-" + kind));
-      const result = verifyPackagedLicenses(base, kind, projectRoot);
-      const manifest = JSON.parse(readNotice(base, "package.json"));
-      if (manifest.name !== expected.name || manifest.version !== expected.version || manifest.private !== expected.private ||
-          JSON.stringify(manifest.exports) !== JSON.stringify(expected.exports) ||
-          JSON.stringify(manifest.dependencies) !== JSON.stringify(expected.dependencies)) throw new Error("Packing changed package identity/API");
-      if (kind === "native") {
-        if (manifest.exports["."].types !== "./dist/index.d.ts") throw new Error("Native declaration export not configured");
-        readNotice(base, "dist/index.d.ts");
-        const native = JSON.parse(readNotice(base, "native/manifest.json"));
-        for (const [platform, artifact] of Object.entries(native.artifacts)) {
-          if (!/^[a-f0-9]{64}$/.test(artifact.sha256) ||
-              artifact.file !== "cursor_native." + platform + "." + artifact.sha256.slice(0, 16) + ".node" ||
-              sha256(readNotice(base, "native/" + artifact.file)) !== artifact.sha256) throw new Error("Native artifact checksum mismatch");
-        }
-      }
-      summaries.push({ ...result, name: manifest.name, version: manifest.version, files: treeFiles(base).length });
+      summaries.push(verifyPackageArtifact(base, kind, projectRoot));
     }
 
     const consumer = join(temporary, "consumer"); mkdirSync(consumer);
@@ -117,7 +104,7 @@ export function runPackagePreflight({ projectRoot = defaultRoot, archivesDirecto
       CURSOR_NATIVE_PI_BINARY: piBinary,
       OPENCODE_CURSOR_REQUIRE_HOST: "1", CURSOR_NATIVE_REQUIRE_PI: "1",
       CURSOR_PACKED_OPENCODE_DIRECTORY: installed("opencode"),
-      CURSOR_PACKED_PI_EXTENSION: join(installed("pi"), "dist/index.js"),
+      CURSOR_PACKED_PI_EXTENSION: join(installed("pi"), "dist/extension.ts"),
       CARGO_TARGET_DIR: join(temporary, "unused-cargo-target"), RUSTUP_AUTO_INSTALL: "0",
     };
     const hostOutput = execFileSync(process.execPath, [join(projectRoot, "node_modules/vitest/vitest.mjs"), "run",
@@ -125,9 +112,14 @@ export function runPackagePreflight({ projectRoot = defaultRoot, archivesDirecto
       // Three sequential 75s cases per host file, plus transform/startup margin.
       { cwd: projectRoot, env: hostEnv, encoding: "utf8", timeout: 300000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
     if (!/6 passed/.test(hostOutput) || /\bskipped\b/.test(hostOutput)) throw new Error("Packed-host flows did not all pass");
+    // Keep the six release-required host cases unchanged, and additionally exercise
+    // persisted model discovery, restart and an explicit image/Max route from the tarball.
+    const capabilityOutput = execFileSync(process.execPath, [join(projectRoot, "node_modules/vitest/vitest.mjs"), "run", "test/pi/advanced-host.test.ts"],
+      { cwd: projectRoot, env: hostEnv, encoding: "utf8", timeout: 300000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+    if (!/1 passed/.test(capabilityOutput) || /\bskipped\b/.test(capabilityOutput)) throw new Error("Packed Pi catalog/restart/image/Max flow did not pass");
     const report = { packages: summaries, offlineInstall: true, lifecycleScriptsDisabled: true,
       nativeLoadWithoutToolchain: output, isolatedTypeConsumer: true,
-      packedHostCases: 6, peerSDKs: "external provisioned host peers; not bundled" };
+      packedHostCases: 6, packedPiCapabilityCases: 1, peerSDKs: "external provisioned host peers; not bundled" };
     if (outputDirectory) {
       if (lstatSync(outputDirectory, { throwIfNoEntry: false })) throw new Error("Refusing to overwrite package output directory");
       mkdirSync(outputDirectory, { recursive: true });

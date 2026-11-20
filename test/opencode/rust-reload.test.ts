@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import plugin from "../../packages/opencode/src/plugin.js";
-import { PACKAGE_ID, SESSION_HEADER, WORKSPACE_HEADER } from "../../packages/opencode/src/model.js";
+import { PACKAGE_ID, SESSION_HEADER, WORKSPACE_HEADER, REQUEST_KIND_HEADER } from "../../packages/opencode/src/model.js";
 import { shutdownRustEngines } from "@cursor-harness-provider/native";
 import { cursorServer } from "./fixtures/cursor-server.js";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
@@ -27,7 +27,7 @@ it("versions cached SDK/language factories on activation, not on catalog replay"
       provider: { transform: async (fn: (e: any) => void) => { transform = fn; fn({ add: (v: any) => { inventory = v; } }); return registration(); } },
       session: {
         hook: async (name: string, handler: (event: any) => Promise<void> | void, filter: unknown) => { sessionHooks.set(name, { handler, filter }); return registration(); },
-        get: async ({ sessionID }: { sessionID: string }) => { expect(sessionID).toBe("fixture-session"); return { location: { directory: "/tmp/rust-reload/other workspace" } }; },
+        get: async ({ sessionID }: { sessionID: string }) => { expect(sessionID).toMatch(/^fixture-session/); return { location: { directory: "/tmp/rust-reload/other workspace" } }; },
       },
     };
     const cleanup = await plugin.setup(context as unknown as Parameters<typeof plugin.setup>[0]);
@@ -48,11 +48,14 @@ it("versions cached SDK/language factories on activation, not on catalog replay"
     expect(request.filter).toEqual({ providerID: "cursor-native" });
     const identities = [];
     for (const kind of ["primary", "compaction", "title", "generate"]) {
-      const event = { sessionID: "fixture-session", model: { providerID: "cursor-native" }, kind, headers: {} as Record<string, string> };
+      const event = { sessionID: "fixture-session", model: { providerID: "cursor-native" }, kind, headers: { [SESSION_HEADER.toUpperCase()]: "stale", [REQUEST_KIND_HEADER.toUpperCase()]: "primary" } as Record<string, string> };
       await request.handler(event);
       expect(event.headers[WORKSPACE_HEADER]).toBe(encodeURIComponent("/tmp/rust-reload/other workspace"));
-      expect(event.headers[SESSION_HEADER]).toBe("fixture-session:" + kind);
-      identities.push(event.headers[SESSION_HEADER]);
+      expect(event.headers[SESSION_HEADER.toUpperCase()]).toBeUndefined();
+      expect(event.headers[REQUEST_KIND_HEADER.toUpperCase()]).toBeUndefined();
+      expect(event.headers[REQUEST_KIND_HEADER]).toBe(kind);
+      expect(event.headers[SESSION_HEADER]).toBe(kind === "primary" || kind === "generate" ? "fixture-session:" + kind : undefined);
+      identities.push(event.headers[REQUEST_KIND_HEADER]);
     }
     expect(new Set(identities).size).toBe(4);
     // Same cache inputs used by the actual 2.2.5 AISDK service, reduced here
@@ -67,17 +70,26 @@ it("versions cached SDK/language factories on activation, not on catalog replay"
     const generation = info.settings.cursorNativeActivation;
     transform!({ add: (v: any) => { inventory = v; } });
     expect(inventory.info.settings.cursorNativeActivation).toBe(generation);
-    return { model: model!, generation, cleanup };
+    return { model: model!, generation, cleanup, request: sessionHooks.get("model.request")!.handler };
   }
   const input = { prompt: [{ role: "user" as const, content: [{ type: "text" as const, text: "hello" }] }] };
   try {
     const first = await activation();
+    // Real NativeEngine + localhost H2: completed auxiliary requests must not
+    // consume the 64 persistent actor slots, including tool-less generate.
+    for (let i = 0; i < 70; i++) {
+      const event = { sessionID: "fixture-session-aux-" + i, model: { providerID: "cursor-native" }, kind: ["title", "compaction", "generate", "generate"][i % 4], headers: {} as Record<string, string> };
+      await first.request(event);
+      expect((await first.model.doGenerate({ ...input, headers: event.headers,
+        ...(i % 4 === 3 ? { tools: [{ type: "function" as const, name: "read", inputSchema: { type: "object" } }] } : {}),
+      })).finishReason.unified).toBe("stop");
+    }
     expect((await first.model.doGenerate(input)).finishReason.unified).toBe("stop");
     await first.cleanup?.();
     const second = await activation();
     expect(second.generation).not.toBe(first.generation);
     expect(second.model).not.toBe(first.model);
     expect((await second.model.doGenerate(input)).finishReason.unified).toBe("stop");
-    expect(server.runs).toHaveLength(2);
+    expect(server.runs).toHaveLength(72);
   } finally { for (const cleanup of cleanups.reverse()) await cleanup(); await server.close(); delete process.env.OPENCODE_CURSOR_AGENT_URL; }
 });

@@ -119,7 +119,8 @@ describe("session-owned Rust stream adapter", () => {
     const a = await run(), again = await run(); expect(a.scope).toBe(again.scope);
     const rotation = await run({ ...opts, apiKey: jwt("fixture-a", "rotated") }); expect(rotation.scope).toBe(a.scope);
     const account = await run({ ...opts, apiKey: jwt("fixture-b") }); expect(account.scope).not.toBe(a.scope);
-    const otherSession = await run({ ...opts, sessionId: "other-session" }); expect(otherSession.scope).not.toBe(a.scope); expect(otherSession.stateless).toBe(true);
+    const otherSession = await run({ ...opts, sessionId: "other-session" }); expect(otherSession.scope).not.toBe(a.scope); expect(otherSession.stateless).toBe(false);
+    const sameChild = await run({ ...opts, sessionId: "other-session" }); expect(sameChild.scope).toBe(otherSession.scope);
     await runtime.streamSimple(model(), context(), { ...opts, cacheRetention: "none" }).result();
     const summary = JSON.parse(engine.start.mock.calls.at(-1)![0]); expect(summary.scope).not.toBe(a.scope); expect(summary.stateless).toBe(true);
     expect(a.scope).toMatch(/^[0-9a-f]{64}$/); expect(a.cacheDir).toContain("/pi/rust-sessions-v1");
@@ -157,7 +158,7 @@ describe("Pi request instrumentation", () => {
     expect(onPayload).toHaveBeenCalledOnce(); expect(onResponse).not.toHaveBeenCalled();
     expect(JSON.parse(engine.start.mock.calls[0]![0]).prompt[0].content).toBe("replacement instructions"); runtime.shutdown();
   });
-  it.each(["scope", "modelId", "workspace", "cacheDir", "agentUrl", "stateless"])("prevents a payload hook replacing protected %s", async key => {
+  it.each(["scope", "modelId", "modelParameters", "maxMode", "workspace", "cacheDir", "agentUrl", "stateless"])("prevents a payload hook replacing protected %s", async key => {
     const { runtime, engine } = setup();
     const result = await runtime.streamSimple(model(), context(), { ...opts, onPayload: payload => ({ ...(payload as object), [key]: "attacker" }) }).result();
     expect(result.stopReason).toBe("error"); expect(engine.start).not.toHaveBeenCalled(); runtime.shutdown();
@@ -198,6 +199,7 @@ describe("Pi request instrumentation", () => {
   });
   it("normalizes mixed infrastructure and recovery memory before the payload hook/native boundary", async () => {
     const { runtime, engine } = setup();
+    await runtime.discover(token);
     const source = context({ systemPrompt: "Base", messages: [{ role: "user", timestamp: 1, content: [
       { type: "text", text: `Please review this image.\n\n${infrastructureNotices.context}\n\n${infrastructureNotices.compaction}` },
       { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
@@ -211,7 +213,7 @@ describe("Pi request instrumentation", () => {
       expect(JSON.stringify(request.prompt[0])).toContain("Prior work: fixture auth");
       expect(request.tools).toEqual([]);
     });
-    expect((await runtime.streamSimple(model("auto", true), source, { ...opts, onPayload }).result()).stopReason).toBe("stop");
+    expect((await runtime.streamSimple(model("chat", true), source, { ...opts, onPayload }).result()).stopReason).toBe("stop");
     expect(onPayload).toHaveBeenCalledOnce(); expect(JSON.parse(engine.start.mock.calls[0]![0]).tools).toEqual([]); runtime.shutdown();
   });
   it("rejects a hook-added image when the chosen model has no image capability", async () => {

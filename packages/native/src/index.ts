@@ -12,6 +12,10 @@ export interface RustEngine {
   start(request: string, accessToken: string): Promise<RustStream>;
   listModels(accessToken: string, url?: string): Promise<string>;
   getUsage?(accessToken: string): Promise<string>;
+  /** Atomic payload accounting, not a process RSS guarantee. */
+  resourceStats?(): string;
+  /** Explicit dry-run by default; only a previously registered scope/root. */
+  maintainCache?(scope: string, apply?: boolean): Promise<string>;
   remove(scope: string): Promise<void>;
   shutdown(): void;
 }

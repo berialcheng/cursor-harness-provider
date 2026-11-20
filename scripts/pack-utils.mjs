@@ -19,14 +19,21 @@ export function isolatedNpm(temporary, npmCli = process.env.npm_execpath) {
   } };
 }
 
-export function treeFiles(directory, prefix = "") {
+export function treeFiles(directory, prefix = "", budget = { entries: 0 }) {
+  if (prefix.split("/").length > 64) throw new Error("Package path depth exceeded");
   if (lstatSync(directory).isSymbolicLink()) throw new Error("Symlinked package tree");
   const out = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (++budget.entries > 6000) throw new Error("Too many package entries");
+    if (!entry.name || /[\\\\\x00-\x1f]/.test(entry.name) || [".", ".."].includes(entry.name)) throw new Error("Unsafe package path");
     const name = prefix + entry.name, path = join(directory, entry.name);
     if (entry.isSymbolicLink()) throw new Error("Symlinked package entry");
-    if (entry.isDirectory()) out.push(...treeFiles(path, name + "/"));
-    else if (entry.isFile()) out.push(name);
+    if (entry.isDirectory()) out.push(...treeFiles(path, name + "/", budget));
+    else if (entry.isFile()) {
+      const stat = lstatSync(path);
+      if (stat.nlink !== 1 || stat.size > 128 * 1024 * 1024) throw new Error("Hardlinked/oversized package entry");
+      out.push(name);
+    }
     else throw new Error("Non-regular package entry");
   }
   return out.sort();

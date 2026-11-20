@@ -5,8 +5,12 @@ interface ImageContent { type: "image"; data: string; mimeType: string }
 export function inlineImage(part: Pick<LanguageModelV3FilePart, "mediaType" | "data">): ImageContent {
   if (!/^image\/(png|jpe?g|gif|webp)$/i.test(part.mediaType)) throw new Error("Cursor Native supports PNG/JPEG/GIF/WebP attachments only");
   let data: string;
-  if (part.data instanceof Uint8Array) data = Buffer.from(part.data).toString("base64");
-  else if (part.data instanceof URL) {
+  if (part.data instanceof Uint8Array) {
+    // Encoded bytes are canonical: bound them first, then encode the view without a copy.
+    const { buffer, byteOffset, byteLength } = part.data;
+    if (!byteLength || byteLength > 5 * 1024 * 1024) throw new Error("Invalid or oversized inline image (maximum 5 MiB)");
+    return { type: "image", data: Buffer.from(buffer, byteOffset, byteLength).toString("base64"), mimeType: part.mediaType };
+  } else if (part.data instanceof URL) {
     if (part.data.protocol !== "data:") throw new Error("Cursor Native will not fetch attachment URLs or open file paths; attach inline image bytes");
     const match = part.data.href.match(/^data:([^;,]+);base64,(.*)$/s);
     if (!match || match[1] !== part.mediaType) throw new Error("Invalid image data URL");

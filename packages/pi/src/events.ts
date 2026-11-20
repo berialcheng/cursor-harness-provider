@@ -31,13 +31,14 @@ export class PiEventWriter {
     this.started = true; this.stream.push({ type: "start", partial: this.message });
   }
   private block(id: unknown, kind: Block["kind"]): Block {
-    const b = this.blocks.get(required(id));
+    const b = this.blocks.get(kind + ":" + required(id));
     if (!b || b.kind !== kind || b.ended) throw new Error("Native content event has no matching open block");
     return b;
   }
   private open(id: string, block: Block): void {
-    if (this.blocks.has(id)) throw new Error("Duplicate native content block ID");
-    this.blocks.set(id, block);
+    const key = block.kind + ":" + id;
+    if (this.blocks.has(key)) throw new Error("Duplicate native content block ID");
+    this.blocks.set(key, block);
   }
   /** Earliest structured values from Rust, not fabricated HTTP frames or headers. */
   accept(event: Record<string, unknown>): boolean {
@@ -133,6 +134,10 @@ export class PiEventWriter {
   fail(error: unknown, aborted: boolean, secrets: readonly string[]): void {
     if (this.terminal) return;
     for (const b of this.blocks.values()) if (!b.ended) this.close(b, true);
+    // No tool from a failed assistant turn is executable, even if its own JSON finished earlier.
+    for (const p of this.message.content) if (p.type === "toolCall") {
+      p.arguments = {}; p.argumentsError ??= "Cursor assistant turn did not complete; do not execute";
+    }
     let message = aborted ? "Cursor request aborted" : safeError(error, secrets);
     if (!aborted && /context_length_exceeded|maximum context length|prompt is too long|context window.{0,30}exceeded/i.test(message)) {
       message = "context_length_exceeded: " + message;

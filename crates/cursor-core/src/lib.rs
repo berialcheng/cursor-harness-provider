@@ -6,6 +6,8 @@ pub mod pb {
 pub mod engine;
 pub mod journal;
 pub mod protocol;
+pub mod resource;
+mod sha256;
 pub mod transport;
 pub mod types;
 

@@ -1,11 +1,14 @@
 import { build } from "esbuild";
+import { copyFile } from "node:fs/promises";
 const targets = [
-  { host: "native", entryPoints: ["packages/native/src/index.ts"], outdir: "packages/native/dist" },
+  { host: "native", entryPoints: ["packages/native/src/index.ts", "packages/native/src/lifecycle.ts"], outdir: "packages/native/dist" },
   { host: "opencode", entryPoints: ["packages/opencode/src/plugin.ts", "packages/opencode/src/model.ts"], outdir: "packages/opencode/dist" },
   { host: "pi", entryPoints: ["packages/pi/src/index.ts"], outdir: "packages/pi/dist" },
 ];
 for (const target of targets) {
   const result = await build({ entryPoints: target.entryPoints, outdir: target.outdir, bundle: true, platform: "node", target: "node22", format: "esm", packages: "external", sourcemap: true, metafile: true });
+  // Keep the host-facing TS imports under Pi's public extension module mapping.
+  if (target.host === "pi") await copyFile("packages/pi/src/extension.ts", "packages/pi/dist/extension.ts");
   for (const source of Object.keys(result.metafile.inputs)) {
     if (/test\/reference|reference-model\.ts|vendor\/pi-cursor\/src\/(stream|client)\//.test(source)) throw new Error("Production imported a JS inference engine: " + source);
     if (target.host !== "opencode" && source.includes("packages/opencode/")) throw new Error("Cross-host dependency: " + source);

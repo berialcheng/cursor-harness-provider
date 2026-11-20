@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,13 @@ import { preparePackageLicenses, sha256, verifyPackagedLicenses } from "../scrip
 // @ts-expect-error Development tooling is intentionally JavaScript.
 import { aggregateParts, assertIdentity, mergePackageTrees, releaseSource, sourceIdentity, verifyBundle } from "../scripts/release.mjs";
 // @ts-expect-error Development tooling is intentionally JavaScript.
-import { copyTree, extractPackage, isolatedNpm } from "../scripts/pack-utils.mjs";
+import { copyTree, extractPackage, isolatedNpm, treeFiles } from "../scripts/pack-utils.mjs";
+// @ts-expect-error Development tooling is intentionally JavaScript.
+import { checkNative, packPackageArtifact, stagePackageArtifact } from "../scripts/package-artifacts.mjs";
+// @ts-expect-error Development tooling is intentionally JavaScript.
+import { packageArtifact } from "../scripts/build-rust.mjs";
+// @ts-expect-error Development tooling is intentionally JavaScript.
+import { runPackagePreflight } from "../scripts/test-packages.mjs";
 
 // @ts-expect-error Development tooling is intentionally JavaScript.
 import { dependencyRecords, lockedSourceBinding } from "../scripts/license-inputs.mjs";
@@ -49,9 +55,18 @@ function fixture() {
     put("packages/"+kind+"/package.json",{name:names[kind],version,private:false,license:"MIT",
       repository:{type:"git",url:"git+https://github.com/berialcheng/cursor-harness-provider.git",directory:"packages/"+kind},
       publishConfig:{access:"public",registry:policy.registry},
-      dependencies:kind==="native"?{}:{[names.native]:version}});
+      exports:kind==="native"?{".":{types:"./dist/index.d.ts",import:"./dist/index.js"},"./lifecycle":{types:"./dist/lifecycle.d.ts",import:"./dist/lifecycle.js"}}:"./dist/index.js",
+      dependencies:kind==="native"?{}:{[names.native]:version},
+      ...(kind==="pi"?{pi:{extensions:["./dist/extension.ts"]}}:{})});
+    put("packages/"+kind+"/README.md","Synthetic package README\n");
+    if(kind==="native"){
+      put("packages/native/dist/index.d.ts","export declare const fixture: boolean;\n");
+      put("packages/native/dist/lifecycle.d.ts","export declare const fixture: boolean;\n");
+      put("packages/native/dist/lifecycle.js","export const fixture=true;\n");
+    }
     put("packages/"+kind+"/THIRD_PARTY_NOTICES.md","Unchanged license at licenses/pi-cursor/LICENSE\n");
     put("packages/"+kind+"/dist/index.js","export const fixture=true;\n");
+    if(kind==="pi")put("packages/pi/dist/extension.ts",'export { default } from "./index.js";\n');
   }
   const inputs=[];
   for(const item of platforms){
@@ -69,6 +84,11 @@ function fixture() {
 }
 function merge(f:ReturnType<typeof fixture>){mergePackageTrees({projectRoot:f.root,...f});}
 describe("release preflight aggregation",()=>{
+  it("rejects a Pi artifact missing its declared host shim",()=>{
+    const f=fixture();
+    rmSync(join(f.inputs[0].packages.pi,"dist/extension.ts"));
+    expect(()=>stagePackageArtifact({source:f.inputs[0].packages.pi,destination:join(f.base,"missing-shim"),kind:"pi",projectRoot:f.root})).toThrow();
+  });
   it("merges binaries without flattening or dropping target-specific license inventories",()=>{
     const f=fixture();merge(f);
     const native=join(f.outputDirectory,"native"),manifest=JSON.parse(readFileSync(join(native,"native/manifest.json"),"utf8"));
@@ -88,12 +108,24 @@ describe("release preflight aggregation",()=>{
           const bytes=readFileSync(join(directory,result.filename));
           rmSync(join(directory,result.filename));writeFileSync(join(directory,kind+".tgz"),bytes);
         }
-        const evidence={offlineInstall:true,lifecycleScriptsDisabled:true,isolatedTypeConsumer:true,nativeLoadWithoutToolchain:f.version,packedHostCases:6,
+        const evidence={offlineInstall:true,lifecycleScriptsDisabled:true,isolatedTypeConsumer:true,nativeLoadWithoutToolchain:f.version,packedHostCases:6,packedPiCapabilityCases:1,
           packages:["native","pi","opencode"].map(kind=>({kind,name:f.policy.packages[kind as keyof typeof f.policy.packages],version:f.version,...(kind==="native"?{target:item.target}:{})}))};
         writeFileSync(join(directory,"preflight.json"),JSON.stringify(evidence));
         const files=Object.fromEntries(["native.tgz","pi.tgz","opencode.tgz","preflight.json"].map(file=>[file,sha256(readFileSync(join(directory,file)))]));
         writeFileSync(join(directory,"part.json"),JSON.stringify({schemaVersion:1,version:f.version,identity,target:item.target,platform:item.platform,files,packages:f.policy.packages}));
       }
+      // Current evidence is mandatory; old reports are not silently upgraded.
+      const directory=join(input,f.inputs[0].platform),reportPath=join(directory,"preflight.json"),partPath=join(directory,"part.json");
+      const report=JSON.parse(readFileSync(reportPath,"utf8")),part=JSON.parse(readFileSync(partPath,"utf8"));
+      for(const value of [undefined,0,2,"1",null]){
+        writeFileSync(reportPath,JSON.stringify({...report,packedPiCapabilityCases:value}));
+        writeFileSync(partPath,JSON.stringify({...part,files:{...part.files,"preflight.json":sha256(readFileSync(reportPath))}}));
+        expect(()=>aggregateParts({projectRoot:f.root,inputDirectory:input,outputDirectory:output,localOnly:true})).toThrow(/Missing packed-host evidence/);
+      }
+      writeFileSync(reportPath,JSON.stringify({...report,packedHostCases:5}));
+      writeFileSync(partPath,JSON.stringify({...part,files:{...part.files,"preflight.json":sha256(readFileSync(reportPath))}}));
+      expect(()=>aggregateParts({projectRoot:f.root,inputDirectory:input,outputDirectory:output,localOnly:true})).toThrow(/Missing packed-host evidence/);
+      writeFileSync(reportPath,JSON.stringify(report));writeFileSync(partPath,JSON.stringify(part));
       const bundle=aggregateParts({projectRoot:f.root,inputDirectory:input,outputDirectory:output,localOnly:true});
       expect(bundle.platforms).toEqual(["darwin-arm64","linux-x64-gnu"]);
       expect(verifyBundle({projectRoot:f.root,bundleDirectory:output,localOnly:true}).packages).toHaveLength(3);
@@ -157,11 +189,101 @@ describe("release preflight aggregation",()=>{
     expect(()=>releaseSource(f.root)).toThrow(/Non-public npm lockfile/);
   });
 });
+describe("canonical native artifact staging",()=>{
+  it("retains same-version generations A+B on disk but packs only selected B, accepted by exact aggregation",()=>{
+    const f=fixture(),item=f.inputs[0],source=item.packages.native,native=join(source,"native");
+    const input=join(f.base,"generation.node");
+    writeFileSync(input,"generation A");
+    const a=packageArtifact({source:input,platform:item.platform,version:f.version,directory:native});
+    writeFileSync(input,"generation B");
+    const b=packageArtifact({source:input,platform:item.platform,version:f.version,directory:native});
+    const before=Object.fromEntries(treeFiles(source).map((path:string)=>[path,sha256(readFileSync(join(source,path)))]));
+    const npm=isolatedNpm(join(f.base,"npm"));
+    const result=packPackageArtifact({source,stagingDirectory:join(f.base,"stage"),outputDirectory:f.base,kind:"native",projectRoot:f.root,npm});
+    const packed=extractPackage(result.archive,join(f.base,"tarball"));
+    expect(treeFiles(join(packed,"native"))).toEqual([b.file,"manifest.json"].sort());
+    expect(readFileSync(join(source,"native",a.file),"utf8")).toBe("generation A");
+    expect(readFileSync(join(source,"native",b.file),"utf8")).toBe("generation B");
+    expect(Object.fromEntries(treeFiles(source).map((path:string)=>[path,sha256(readFileSync(join(source,path)))]))).toEqual(before);
+    expect(readFileSync(join(packed,"package.json"))).toEqual(readFileSync(join(source,"package.json")));
+    for(const asset of ["README.md","THIRD_PARTY_NOTICES.md","LICENSE","dist/index.d.ts"])expect(readFileSync(join(packed,asset))).toEqual(readFileSync(join(source,asset)));
+    expect(()=>checkNative(packed)).not.toThrow();
+    item.packages.native=packed;merge(f);
+    expect(Object.keys(checkNative(join(f.outputDirectory,"native")).artifacts)).toHaveLength(2);
+  },30000);
+  it("rejects surplus binaries in supplied archives instead of silently staging them away",()=>{
+    const f=fixture(),source=f.inputs[0].packages.native,archives=join(f.base,"archives");mkdirSync(archives);
+    writeFileSync(join(source,"native/orphan.node"),"orphan");
+    const npm=isolatedNpm(join(f.base,"npm"));
+    const result=JSON.parse(npm.run(["pack","--json","--pack-destination",archives],source))[0];
+    writeFileSync(join(archives,"native.tgz"),readFileSync(join(archives,result.filename)));
+    expect(()=>runPackagePreflight({projectRoot:f.root,archivesDirectory:archives})).toThrow(/Uninventoried native/);
+    expect(()=>merge(f)).toThrow(/Uninventoried native/);
+  },30000);
+  it.each(["manifest","hash","license","types"])("rejects supplied archives with invalid/missing %s",failure=>{
+    const f=fixture(),source=f.inputs[0].packages.native,archives=join(f.base,"archives");mkdirSync(archives);
+    const manifestPath=join(source,"native/manifest.json"),manifest=JSON.parse(readFileSync(manifestPath,"utf8"));
+    if(failure==="manifest")writeFileSync(manifestPath,JSON.stringify({...manifest,version:"9.9.9"}));
+    if(failure==="hash")writeFileSync(join(source,"native",manifest.artifacts[f.inputs[0].platform].file),"corrupted fixture");
+    if(failure==="license")rmSync(join(source,"licenses/pi-cursor/LICENSE"));
+    if(failure==="types")rmSync(join(source,"dist/index.d.ts"));
+    const npm=isolatedNpm(join(f.base,"npm"));
+    const result=JSON.parse(npm.run(["pack","--json","--pack-destination",archives],source))[0];
+    writeFileSync(join(archives,"native.tgz"),readFileSync(join(archives,result.filename)));
+    const errors:Record<string,RegExp>={manifest:/Native manifest/,hash:/Native binary checksum/,license:/licenses\/pi-cursor/,types:/index[.]d[.]ts/};
+    expect(()=>runPackagePreflight({projectRoot:f.root,archivesDirectory:archives})).toThrow(errors[failure]);
+  },30000);
+  it("refuses staging inside source or over existing files",()=>{
+    const f=fixture(),source=f.inputs[0].packages.native;
+    expect(()=>stagePackageArtifact({source,destination:join(source,"native/stage"),kind:"native",projectRoot:f.root})).toThrow(/outside source/);
+    expect(existsSync(join(source,"native/stage"))).toBe(false);
+    const destination=join(f.base,"owned");mkdirSync(destination);writeFileSync(join(destination,"keep"),"owned");
+    expect(()=>stagePackageArtifact({source,destination,kind:"native",projectRoot:f.root})).toThrow(/overwrite/);
+    expect(readFileSync(join(destination,"keep"),"utf8")).toBe("owned");
+  });
+  it("rejects oversized selected assets before creating a staging directory",()=>{
+    const f=fixture(),source=f.inputs[0].packages.native,path=join(source,"dist/oversized.js");
+    // Sparse fixture: no large allocation or read is needed to enforce the budget.
+    execFileSync("python3",["-c","import sys\nwith open(sys.argv[1],'wb') as f: f.truncate(128*1024*1024+1)",path]);
+    const destination=join(f.base,"stage");
+    expect(()=>stagePackageArtifact({source,destination,kind:"native",projectRoot:f.root})).toThrow(/oversized/i);
+    expect(existsSync(destination)).toBe(false);
+  });
+  it("fails closed if npm's files filter would drop a required declaration",()=>{
+    const f=fixture(),source=f.inputs[0].packages.native;
+    const pkg=JSON.parse(readFileSync(join(source,"package.json"),"utf8"));
+    pkg.files=["native","licenses","LICENSE","THIRD_PARTY_NOTICES.md","dist/index.js"];
+    writeFileSync(join(source,"package.json"),JSON.stringify(pkg));f.put("packages/native/package.json",pkg);
+    const npm=isolatedNpm(join(f.base,"npm"));
+    expect(()=>packPackageArtifact({source,stagingDirectory:join(f.base,"stage"),outputDirectory:f.base,kind:"native",projectRoot:f.root,npm})).toThrow();
+  },30000);
+  it.each(["version","artifacts","platform","hash","path"])("rejects an invalid native manifest: %s",field=>{
+    const f=fixture(),source=f.inputs[0].packages.native,path=join(source,"native/manifest.json"),m=JSON.parse(readFileSync(path,"utf8"));
+    const platform=f.inputs[0].platform;
+    if(field==="version")m.version="9.9.9";
+    if(field==="artifacts")m.artifacts=[];
+    if(field==="platform")m.artifacts={"../escape":m.artifacts[platform]};
+    if(field==="hash")m.artifacts[platform].sha256="0".repeat(64);
+    if(field==="path")m.artifacts[platform].file="../outside.node";
+    writeFileSync(path,JSON.stringify(m));
+    expect(()=>stagePackageArtifact({source,destination:join(f.base,"stage"),kind:"native",projectRoot:f.root})).toThrow(/Native/);
+  });
+  it.each(["README.md","LICENSE","THIRD_PARTY_NOTICES.md","dist/index.d.ts","dist/lifecycle.d.ts","dist/lifecycle.js","licenses/pi-cursor/LICENSE"])("rejects missing required asset %s",asset=>{
+    const f=fixture(),source=f.inputs[0].packages.native;rmSync(join(source,asset));
+    expect(()=>stagePackageArtifact({source,destination:join(f.base,"stage"),kind:"native",projectRoot:f.root})).toThrow();
+  });
+  it.each(["symlink","hardlink"])("rejects %s source assets",type=>{
+    const f=fixture(),source=f.inputs[0].packages.native,file=join(source,"dist/index.d.ts"),outside=join(f.base,"outside");
+    writeFileSync(outside,"external fixture");rmSync(file);
+    if(type==="symlink")symlinkSync(outside,file);else linkSync(outside,file);
+    expect(()=>stagePackageArtifact({source,destination:join(f.base,"stage"),kind:"native",projectRoot:f.root})).toThrow(/link/i);
+  });
+});
 describe("safe build-time tarball handling",()=>{
   function archive(name:string,type:string){
     const base=mkdtempSync(join(tmpdir(),"cursor-archive-test-"));temporary.push(base);
     const path=join(base,"fixture.tgz");
-    execFileSync("python3",["-c","import tarfile,sys,io\nwith tarfile.open(sys.argv[1],'w:gz') as t:\n m=tarfile.TarInfo(sys.argv[2]);m.size=4\n if sys.argv[3]=='link':m.type=tarfile.SYMTYPE;m.linkname='../../outside';m.size=0\n t.addfile(m,io.BytesIO(b'MIT\\n') if m.isfile() else None)",path,name,type]);
+    execFileSync("python3",["-c","import tarfile,sys,io\nwith tarfile.open(sys.argv[1],'w:gz') as t:\n m=tarfile.TarInfo(sys.argv[2]);m.size=4\n if sys.argv[3] in ('link','hardlink'):m.type=tarfile.SYMTYPE if sys.argv[3]=='link' else tarfile.LNKTYPE;m.linkname='../../outside';m.size=0\n t.addfile(m,io.BytesIO(b'MIT\\n') if m.isfile() else None)",path,name,type]);
     return{base,path,destination:join(base,"extracted")};
   }
   it("rejects traversal paths before creating an extraction directory",()=>{
@@ -171,6 +293,11 @@ describe("safe build-time tarball handling",()=>{
   });
   it("rejects symlinks before extracting anything",()=>{
     const f=archive("package/link","link");
+    expect(()=>extractPackage(f.path,f.destination)).toThrow();
+    expect(existsSync(f.destination)).toBe(false);
+  });
+  it("rejects archive hardlinks before extracting anything",()=>{
+    const f=archive("package/LICENSE","hardlink");
     expect(()=>extractPackage(f.path,f.destination)).toThrow();
     expect(existsSync(f.destination)).toBe(false);
   });

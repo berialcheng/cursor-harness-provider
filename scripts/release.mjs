@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { packageKinds, readNotice, sha256, verifyPackagedLicenses } from "./package-licenses.mjs";
 import { platformForTarget } from "./build-rust.mjs";
 import { copyTree, extractPackage, isolatedNpm, treeFiles } from "./pack-utils.mjs";
+import { checkNative, packPackageArtifact, verifyPackageArtifact } from "./package-artifacts.mjs";
 import { runPackagePreflight } from "./test-packages.mjs";
 
 const defaultRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -58,19 +59,6 @@ function newOutput(path) {
   if (lstatSync(path, { throwIfNoEntry: false })) throw new Error("Refusing to overwrite release output");
   mkdirSync(path, { recursive: true });
 }
-function checkNative(base) {
-  const pkg = json(base, "package.json"), manifest = json(base, "native/manifest.json");
-  if (manifest.version !== pkg.version || !Object.keys(manifest.artifacts).length) throw new Error("Native manifest version mismatch");
-  const files = new Set(["manifest.json"]);
-  for (const [platform, entry] of Object.entries(manifest.artifacts)) {
-    if (!/^[a-z0-9-]+$/.test(platform) || !/^[a-f0-9]{64}$/.test(entry.sha256) ||
-        entry.file !== "cursor_native." + platform + "." + entry.sha256.slice(0,16) + ".node" ||
-        sha256(readNotice(join(base, "native"), entry.file)) !== entry.sha256) throw new Error("Native binary checksum mismatch");
-    files.add(entry.file);
-  }
-  if (JSON.stringify(treeFiles(join(base, "native"))) !== JSON.stringify([...files].sort())) throw new Error("Uninventoried native binary");
-  return manifest;
-}
 export function exportPart({ projectRoot = defaultRoot, outputDirectory, localOnly = false }) {
   const { policy, version } = releaseSource(projectRoot), identity = sourceIdentity(projectRoot, localOnly);
   const inventory = json(projectRoot, "licenses/rust-dependencies.json"), platform = platformForTarget(inventory.target);
@@ -82,7 +70,7 @@ export function exportPart({ projectRoot = defaultRoot, outputDirectory, localOn
   for (const file of [...packageKinds.map(kind => kind + ".tgz"), "preflight.json"]) files[file] = sha256(readNotice(outputDirectory, file));
   const part = { schemaVersion: 1, version, identity, target: selected.target, platform, files, packages: policy.packages };
   writeFileSync(join(outputDirectory, "part.json"), JSON.stringify(part, null, 2) + "\n");
-  return { platform, version, identity, packedHostCases: report.packedHostCases };
+  return { platform, version, identity, packedHostCases: report.packedHostCases, packedPiCapabilityCases: report.packedPiCapabilityCases };
 }
 function sameTree(a, b, excluded = []) {
   const files = treeFiles(a).filter(path => !excluded.some(prefix => path.startsWith(prefix)));
@@ -98,7 +86,7 @@ export function mergePackageTrees({ projectRoot, inputs, outputDirectory, policy
     for (const kind of packageKinds) {
       const base = item.packages[kind], pkg = json(base, "package.json"), wanted = json(join(projectRoot,"packages",kind),"package.json");
       if (JSON.stringify(pkg) !== JSON.stringify(wanted) || pkg.version !== version || pkg.name !== policy.packages[kind]) throw new Error("Mixed package metadata");
-      verifyPackagedLicenses(base, kind, projectRoot);
+      verifyPackageArtifact(base, kind, projectRoot);
       if (kind === "native") {
         const native = checkNative(base);
         const license = json(base, "licenses/distribution.json");
@@ -156,7 +144,7 @@ export function aggregateParts({ projectRoot = defaultRoot, inputDirectory, outp
       for(const[file,hash]of Object.entries(part.files))if(!/^[a-f0-9]{64}$/.test(hash)||sha256(readNotice(base,file))!==hash)throw new Error("Release part checksum mismatch");
       const evidence=json(base,"preflight.json");
       if(!evidence.offlineInstall||!evidence.lifecycleScriptsDisabled||!evidence.isolatedTypeConsumer||
-          evidence.nativeLoadWithoutToolchain!==version||evidence.packedHostCases!==6||
+          evidence.nativeLoadWithoutToolchain!==version||evidence.packedHostCases!==6||evidence.packedPiCapabilityCases!==1||
           !Array.isArray(evidence.packages)||evidence.packages.length!==3||
           packageKinds.some(kind=>evidence.packages.filter(pkg=>pkg.kind===kind&&pkg.name===policy.packages[kind]&&pkg.version===version).length!==1)||
           evidence.packages.find(pkg=>pkg.kind==="native")?.target!==part.target)throw new Error("Missing packed-host evidence");
@@ -170,7 +158,8 @@ export function aggregateParts({ projectRoot = defaultRoot, inputDirectory, outp
     // isolatedNpm creates its nested home; all artifacts stay outside the checkout.
     newOutput(outputDirectory);
     for(const kind of packageKinds){
-      const result=JSON.parse(npm.run(["pack","--json","--pack-destination",temporary],join(staged,kind)))[0];
+      const result=packPackageArtifact({source:join(staged,kind),stagingDirectory:join(temporary,"pack-"+kind),
+        outputDirectory:temporary,kind,projectRoot,npm});
       if(result.name!==policy.packages[kind]||result.version!==version)throw new Error("Unexpected aggregated package");
       const file=kind+".tgz"; copyFileSync(join(temporary,result.filename),join(outputDirectory,file));
       packed.push({kind,name:result.name,file,sha256:sha256(readNotice(outputDirectory,file))});
@@ -195,7 +184,7 @@ export function verifyBundle({projectRoot=defaultRoot,bundleDirectory,localOnly=
       seen.add(item.kind);
       const base=extractPackage(join(bundleDirectory,item.file),join(temporary,item.kind));
       if(JSON.stringify(json(base,"package.json"))!==JSON.stringify(json(join(projectRoot,"packages",item.kind),"package.json")))throw new Error("Bundle metadata differs from source");
-      verifyPackagedLicenses(base,item.kind,projectRoot);
+      verifyPackageArtifact(base,item.kind,projectRoot);
       if(item.kind==="native"){
         const manifest=checkNative(base);
         if(JSON.stringify(Object.keys(manifest.artifacts).sort())!==JSON.stringify(bundle.platforms))throw new Error("Bundle platform mismatch");

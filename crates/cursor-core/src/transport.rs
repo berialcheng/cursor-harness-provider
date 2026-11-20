@@ -4,7 +4,10 @@ use std::{
     collections::HashMap,
     io::Read,
     net::IpAddr,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 
@@ -27,9 +30,17 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use url::{Host, Url};
 
+use crate::resource::{Lease, Payload};
+
 const MAX_PAYLOAD: usize = 64 * 1024 * 1024;
 const FRAME_HEADER: usize = 5;
 const QUEUE_CAPACITY: usize = 4;
+// At most 64 engine actors share a pool. A stalled actor can withhold only its
+// 64 KiB stream window, so 8 MiB leaves connection credit for healthy actors
+// even when the other 63 are stalled. This is flow-control memory, in addition
+// to the bounded four-message queues and MAX_PAYLOAD decoder/message budgets.
+const STREAM_RECEIVE_WINDOW: u32 = 64 * 1024;
+const CONNECTION_RECEIVE_WINDOW: u32 = 8 * 1024 * 1024;
 // A tolerated framed unary response can contain one message and one end envelope.
 const MAX_UNARY_WIRE: usize = 2 * (MAX_PAYLOAD + FRAME_HEADER);
 const MAX_CA_BUNDLE: u64 = 8 * 1024 * 1024;
@@ -38,15 +49,66 @@ const USAGE_PATH: &str = "/aiserver.v1.DashboardService/GetCurrentPeriodUsage";
 const DEFAULT_CLIENT_VERSION: &str = "cli-2026.07.23-e383d2b";
 
 pub enum Frame {
-    Message(Vec<u8>),
-    End(Value),
+    Message(Payload),
+    End(EndPayload),
 }
 
 pub struct Connection {
     pub incoming: mpsc::Receiver<Result<Frame>>,
     /// Raw protobuf messages; the transport adds Connect envelopes.
-    pub outgoing: mpsc::Sender<Vec<u8>>,
+    pub outgoing: PayloadSender,
     pub cancel: CancellationToken,
+}
+
+#[cfg(test)]
+impl Frame {
+    pub(crate) fn message(bytes: Vec<u8>) -> Self {
+        Self::Message(Payload::from_vec(bytes).expect("fixture budget"))
+    }
+    pub(crate) fn end(value: Value) -> Self {
+        Self::End(EndPayload {
+            value,
+            _lease: Lease::default(),
+        })
+    }
+}
+
+pub struct EndPayload {
+    value: Value,
+    _lease: Lease,
+}
+impl std::ops::Deref for EndPayload {
+    type Target = Value;
+    fn deref(&self) -> &Value {
+        &self.value
+    }
+}
+impl PartialEq<Value> for EndPayload {
+    fn eq(&self, other: &Value) -> bool {
+        self.value == *other
+    }
+}
+#[derive(Clone)]
+pub struct PayloadSender(pub(crate) mpsc::Sender<Payload>);
+impl PayloadSender {
+    pub async fn closed(&self) {
+        self.0.closed().await;
+    }
+    pub async fn send(&self, bytes: Vec<u8>) -> Result<()> {
+        self.send_payload(Payload::from_vec(bytes)?).await
+    }
+    /// For bytes already admitted while they waited, such as acknowledgements of a batch commit.
+    pub async fn send_payload(&self, payload: Payload) -> Result<()> {
+        self.0
+            .send(payload)
+            .await
+            .map_err(|_| anyhow!("Cursor upload stopped"))
+    }
+    pub fn try_send(&self, bytes: Vec<u8>) -> Result<()> {
+        self.0
+            .try_send(Payload::from_vec(bytes)?)
+            .map_err(|_| anyhow!("Cursor upload queue unavailable"))
+    }
 }
 
 /// Clones share only this client's pool. Workers never retain ClientInner, so dropping the
@@ -80,6 +142,10 @@ pub fn client() -> Result<Client> {
 }
 
 fn build_client(proxies: ProxyConfig) -> Result<Client> {
+    build_client_with(proxies, KEEPALIVE)
+}
+
+fn build_client_with(proxies: ProxyConfig, keepalive: Keepalive) -> Result<Client> {
     let native = rustls_native_certs::load_native_certs();
     let mut roots = RootCertStore::empty();
     for certificate in native.certs {
@@ -156,6 +222,7 @@ fn build_client(proxies: ProxyConfig) -> Result<Client> {
                 proxy_tls: Arc::new(proxy_tls),
                 proxies,
                 shutdown: CancellationToken::new(),
+                keepalive,
             }),
         }),
     })
@@ -210,15 +277,86 @@ struct H2Pool {
     proxy_tls: Arc<ClientConfig>,
     proxies: Arc<ProxyConfig>,
     shutdown: CancellationToken,
+    keepalive: Keepalive,
+}
+
+/// While a stream is active and its connection has received nothing for `silence`, send one
+/// PING per silent period. Cursor streams carry server heartbeats, so healthy connections
+/// are rarely pinged and an answered PING is not repeated until frames arrive again.
+#[derive(Clone, Copy)]
+struct Keepalive {
+    silence: Duration,
+    timeout: Duration,
+}
+const KEEPALIVE: Keepalive = Keepalive {
+    silence: Duration::from_secs(20),
+    timeout: Duration::from_secs(20),
+};
+
+/// Shared by a connection's streams and its keepalive driver.
+struct Activity {
+    epoch: tokio::time::Instant,
+    streams: AtomicUsize,
+    // Milliseconds since `epoch` of the latest stream start, headers or DATA.
+    received: AtomicU64,
+}
+impl Activity {
+    fn now(&self) -> u64 {
+        u64::try_from(self.epoch.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+    fn touch(&self) {
+        self.received.store(self.now(), Ordering::Release);
+    }
+    fn stream(self: &Arc<Self>) -> ActiveStream {
+        self.streams.fetch_add(1, Ordering::AcqRel);
+        self.touch();
+        ActiveStream(self.clone())
+    }
+}
+struct ActiveStream(Arc<Activity>);
+impl Drop for ActiveStream {
+    fn drop(&mut self) {
+        self.0.streams.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Returns when a PING goes unanswered; dropping the connection then fails its streams.
+async fn keepalive(ping_pong: Option<h2::PingPong>, activity: Arc<Activity>, config: Keepalive) {
+    let Some(mut ping_pong) = ping_pong else {
+        return std::future::pending().await;
+    };
+    let silence = u64::try_from(config.silence.as_millis()).unwrap_or(u64::MAX);
+    let mut answered = None;
+    loop {
+        tokio::time::sleep(config.silence / 4).await;
+        let received = activity.received.load(Ordering::Acquire);
+        if activity.streams.load(Ordering::Acquire) == 0
+            || activity.now().saturating_sub(received) < silence
+            || answered == Some(received)
+        {
+            continue;
+        }
+        match tokio::time::timeout(config.timeout, ping_pong.ping(h2::Ping::opaque())).await {
+            Ok(Ok(_)) => answered = Some(received),
+            _ => return,
+        }
+    }
 }
 
 struct PooledConnection {
     sender: h2::client::SendRequest<Bytes>,
     closed: CancellationToken,
+    activity: Arc<Activity>,
+    // A silently dropped socket keeps accepting streams until TCP gives up. After a missed
+    // header deadline, later RPCs dial afresh; streams already on it keep their driver.
+    retired: AtomicBool,
 }
 
 impl H2Pool {
-    async fn ready(&self, endpoint: &Url) -> Result<h2::client::SendRequest<Bytes>> {
+    async fn ready(
+        &self,
+        endpoint: &Url,
+    ) -> Result<(h2::client::SendRequest<Bytes>, Arc<PooledConnection>)> {
         let slot = self
             .origins
             .lock()
@@ -234,10 +372,9 @@ impl H2Pool {
             );
             let connection = {
                 let mut cached = slot.lock().await;
-                if cached
-                    .as_ref()
-                    .is_some_and(|connection| connection.closed.is_cancelled())
-                {
+                if cached.as_ref().is_some_and(|connection| {
+                    connection.closed.is_cancelled() || connection.retired.load(Ordering::Acquire)
+                }) {
                     *cached = None;
                 }
                 if cached.is_none() {
@@ -246,7 +383,7 @@ impl H2Pool {
                 cached.as_ref().expect("initialized connection").clone()
             };
             if let Ok(sender) = connection.sender.clone().ready().await {
-                return Ok(sender);
+                return Ok((sender, connection));
             }
             let mut cached = slot.lock().await;
             if cached
@@ -274,11 +411,19 @@ impl H2Pool {
         if endpoint.scheme() == "https" {
             io = tls_connect(io, endpoint, self.tls.clone(), true).await?;
         }
-        let (sender, connection) = h2::client::Builder::new()
+        let (sender, mut connection) = h2::client::Builder::new()
+            .initial_window_size(STREAM_RECEIVE_WINDOW)
+            .initial_connection_window_size(CONNECTION_RECEIVE_WINDOW)
             .enable_push(false)
             .handshake(io)
             .await
             .map_err(|_| h2_error())?;
+        let activity = Arc::new(Activity {
+            epoch: tokio::time::Instant::now(),
+            streams: AtomicUsize::new(0),
+            received: AtomicU64::new(0),
+        });
+        let watchdog = keepalive(connection.ping_pong(), activity.clone(), self.keepalive);
         let closed = CancellationToken::new();
         let driver_closed = closed.clone();
         let shutdown = self.shutdown.clone();
@@ -287,10 +432,16 @@ impl H2Pool {
                 biased;
                 _ = shutdown.cancelled() => {},
                 _ = connection => {},
+                _ = watchdog => {},
             }
             driver_closed.cancel();
         });
-        Ok(Arc::new(PooledConnection { sender, closed }))
+        Ok(Arc::new(PooledConnection {
+            sender,
+            closed,
+            activity,
+            retired: AtomicBool::new(false),
+        }))
     }
 }
 
@@ -659,6 +810,7 @@ pub async fn open(
         !client.inner.pool.shutdown.is_cancelled(),
         "Cursor HTTP/2 client is shut down"
     );
+    let initial = Payload::from_vec(initial)?;
     let endpoint = destination(url, rpc_path)?;
     let headers = request_headers(access_token, false)?;
     let (incoming_tx, incoming) = mpsc::channel(QUEUE_CAPACITY);
@@ -693,7 +845,7 @@ pub async fn open(
     });
     Ok(Connection {
         incoming,
-        outgoing,
+        outgoing: PayloadSender(outgoing),
         cancel,
     })
 }
@@ -737,8 +889,8 @@ async fn stream_rpc(
     pool: &H2Pool,
     endpoint: Url,
     headers: HeaderMap,
-    initial: Vec<u8>,
-    mut outgoing: mpsc::Receiver<Vec<u8>>,
+    initial: Payload,
+    mut outgoing: mpsc::Receiver<Payload>,
     incoming: &mpsc::Sender<Result<Frame>>,
     timeout_ms: u64,
 ) -> Result<()> {
@@ -751,7 +903,8 @@ async fn stream_rpc(
                 .ok_or_else(|| anyhow!("Cursor HTTP/2 timeout is too large"))?,
         )
     };
-    let mut sender = before_deadline(deadline, pool.ready(&endpoint)).await??;
+    let (mut sender, connection) = before_deadline(deadline, pool.ready(&endpoint)).await??;
+    let _active = connection.activity.stream();
     let mut request = http::Request::builder()
         .method(http::Method::POST)
         .uri(endpoint.as_str())
@@ -777,14 +930,16 @@ async fn stream_rpc(
         };
         let receive = async {
             let response = before_deadline(deadline, response)
-                .await?
+                .await
+                .inspect_err(|_| connection.retired.store(true, Ordering::Release))?
                 .map_err(|_| h2_error())?;
+            connection.activity.touch();
             ensure!(
                 response.status().is_success(),
                 "Cursor HTTP/2 request failed with HTTP {}",
                 response.status().as_u16()
             );
-            receive_stream(response.into_body(), incoming).await
+            receive_stream(response.into_body(), incoming, &connection.activity).await
         };
         tokio::pin!(upload, receive);
         tokio::select! {
@@ -811,8 +966,13 @@ async fn before_deadline<F: std::future::Future>(
     }
 }
 
-async fn send_message(send: &mut h2::SendStream<Bytes>, message: Vec<u8>) -> Result<()> {
-    let mut frame = encode_message(message)?;
+async fn send_message(send: &mut h2::SendStream<Bytes>, message: Payload) -> Result<()> {
+    let _copy = Lease::reserve(FRAME_HEADER + message.len())?;
+    let Payload {
+        bytes,
+        lease: _source,
+    } = message;
+    let mut frame = encode_message(bytes)?;
     while !frame.is_empty() {
         // Never hand an unbounded DATA buffer to h2. Cancellation can drop this future at
         // poll_capacity while RequestStream retains the independent reset handle.
@@ -831,11 +991,13 @@ async fn send_message(send: &mut h2::SendStream<Bytes>, message: Vec<u8>) -> Res
 async fn receive_stream(
     mut body: h2::RecvStream,
     incoming: &mpsc::Sender<Result<Frame>>,
+    activity: &Activity,
 ) -> Result<()> {
     let mut decoder = Decoder::default();
     let mut end = None;
     while let Some(chunk) = body.data().await {
         let chunk = chunk.map_err(|_| h2_error())?;
+        activity.touch();
         let mut remaining = chunk.as_ref();
         while !remaining.is_empty() {
             match decoder.next(&mut remaining)? {
@@ -873,7 +1035,8 @@ pub async fn unary(
     access_token: &str,
     body: Vec<u8>,
     timeout_ms: u64,
-) -> Result<Vec<u8>> {
+) -> Result<Payload> {
+    let _request_lease = Lease::reserve(body.capacity())?;
     ensure!(
         body.len() <= MAX_PAYLOAD,
         "Cursor unary request exceeds 64 MiB"
@@ -905,14 +1068,14 @@ pub async fn unary(
         {
             bail!("Cursor unary response exceeds the size limit");
         }
-        let mut body = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(transport_error)? {
-            ensure!(
-                chunk.len() <= MAX_UNARY_WIRE - body.len(),
-                "Cursor unary response exceeds the size limit"
-            );
-            body.extend_from_slice(&chunk);
-        }
+        let mut lease = Lease::default();
+        let body = collect_body(
+            &mut response,
+            MAX_UNARY_WIRE,
+            "Cursor unary response exceeds the size limit",
+            &mut lease,
+        )
+        .await?;
         decode_unary(body)
     });
     tokio::select! {
@@ -947,6 +1110,31 @@ fn usage_request(client: &Client, access_token: &str) -> Result<reqwest::Request
         .map_err(|_| anyhow!("Cannot build Cursor usage request"))
 }
 
+/// Charges DATA chunks as they arrive and joins them once: growing one buffer per frame
+/// would copy quadratically toward the 128 MiB unary bound. The join briefly holds both.
+async fn collect_body(
+    response: &mut reqwest::Response,
+    limit: usize,
+    oversized: &'static str,
+    lease: &mut Lease,
+) -> Result<Vec<u8>> {
+    let mut chunks = Vec::new();
+    let mut total = 0;
+    while let Some(chunk) = response.chunk().await.map_err(transport_error)? {
+        ensure!(chunk.len() <= limit - total, oversized);
+        total += chunk.len();
+        lease.resize(total)?;
+        chunks.push(chunk);
+    }
+    lease.resize(total * 2)?;
+    let mut body = Vec::with_capacity(total);
+    for chunk in chunks {
+        body.extend_from_slice(&chunk);
+    }
+    lease.resize(total)?; // shrink only, cannot fail
+    Ok(body)
+}
+
 async fn execute_usage(client: &Client, request: reqwest::Request) -> Result<Value> {
     let work = with_timeout(10_000, async {
         let mut response = client
@@ -962,14 +1150,14 @@ async fn execute_usage(client: &Client, request: reqwest::Request) -> Result<Val
                 .is_some_and(|length| length > MAX_USAGE_RESPONSE as u64),
             "Cursor usage response exceeds 1 MiB"
         );
-        let mut body = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(transport_error)? {
-            ensure!(
-                chunk.len() <= MAX_USAGE_RESPONSE - body.len(),
-                "Cursor usage response exceeds 1 MiB"
-            );
-            body.extend_from_slice(&chunk);
-        }
+        let mut lease = Lease::default();
+        let body = collect_body(
+            &mut response,
+            MAX_USAGE_RESPONSE,
+            "Cursor usage response exceeds 1 MiB",
+            &mut lease,
+        )
+        .await?;
         let value: Value =
             serde_json::from_slice(&body).map_err(|_| anyhow!("Invalid Cursor usage JSON"))?;
         ensure!(
@@ -1156,6 +1344,7 @@ struct Decoder {
     header_len: usize,
     payload_len: usize,
     payload: Vec<u8>,
+    lease: Lease,
     ended: bool,
 }
 
@@ -1191,6 +1380,7 @@ impl Decoder {
                 self.payload_len <= MAX_PAYLOAD,
                 "Incoming Connect payload exceeds 64 MiB"
             );
+            self.lease = Lease::reserve(self.payload_len)?;
             self.payload = Vec::with_capacity(self.payload_len);
         }
         let count = (self.payload_len - self.payload.len()).min(input.len());
@@ -1200,15 +1390,23 @@ impl Decoder {
             return Ok(None);
         }
         let payload = std::mem::take(&mut self.payload);
+        let lease = std::mem::take(&mut self.lease);
         self.header_len = 0;
         if self.header[0] == 2 {
+            let _parse = Lease::reserve(payload.len())?;
             let end: Value = serde_json::from_slice(&payload)
                 .map_err(|_| anyhow!("Invalid Connect end-stream JSON"))?;
             ensure!(end.is_object(), "Connect end-stream JSON must be an object");
             self.ended = true;
-            Ok(Some(Frame::End(end)))
+            Ok(Some(Frame::End(EndPayload {
+                value: end,
+                _lease: lease,
+            })))
         } else {
-            Ok(Some(Frame::Message(payload)))
+            Ok(Some(Frame::Message(Payload {
+                bytes: payload,
+                lease,
+            })))
         }
     }
 
@@ -1227,7 +1425,7 @@ impl Decoder {
     }
 }
 
-fn decode_unary(body: Vec<u8>) -> Result<Vec<u8>> {
+fn decode_unary(body: Vec<u8>) -> Result<Payload> {
     // Do not treat a leading 0/2 byte as proof of framing. A candidate must parse completely,
     // with exactly one message and an optional final JSON end envelope (or an error-only end).
     let mut decoder = Decoder::default();
@@ -1250,6 +1448,11 @@ fn decode_unary(body: Vec<u8>) -> Result<Vec<u8>> {
         );
         Ok(())
     })();
+    if let Err(error) = &candidate {
+        if error.is::<crate::resource::Exhausted>() {
+            return Err(candidate.expect_err("checked error"));
+        }
+    }
     if candidate.is_ok() {
         if end
             .as_ref()
@@ -1266,15 +1469,17 @@ fn decode_unary(body: Vec<u8>) -> Result<Vec<u8>> {
         body.len() <= MAX_PAYLOAD,
         "Cursor unary response exceeds 64 MiB"
     );
-    Ok(body)
+    Ok(Payload::from_vec(body)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::FutureExt;
     use std::{
         io::{ErrorKind, Write},
         net::{TcpListener, TcpStream},
+        panic::AssertUnwindSafe,
         thread::{self, JoinHandle},
         time::Instant,
     };
@@ -1385,9 +1590,21 @@ mod tests {
         proxy: bool,
         work: impl FnOnce(&mut Wire) -> Result<()> + Send + 'static,
     ) -> Result<(String, JoinHandle<Result<()>>)> {
+        let ((), url, thread) = fixture_with_setup(proxy, |_| Ok(()), work)?;
+        Ok((url, thread))
+    }
+
+    fn fixture_with_setup<T>(
+        proxy: bool,
+        setup: impl FnOnce(&str) -> Result<T>,
+        work: impl FnOnce(&mut Wire) -> Result<()> + Send + 'static,
+    ) -> Result<(T, String, JoinHandle<Result<()>>)> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let url = format!("http://{}", listener.local_addr()?);
         listener.set_nonblocking(true)?;
+        // URL-dependent clients (notably CONNECT proxies) still need real TLS/trust setup.
+        // Complete it before spawning the server and starting its unchanged accept budget.
+        let prepared = setup(&url)?;
         let thread = thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(3);
             let socket = loop {
@@ -1438,7 +1655,7 @@ mod tests {
             wire.send(4, 0, 0, &[])?;
             work(&mut wire)
         });
-        Ok((url, thread))
+        Ok((prepared, url, thread))
     }
 
     fn fixture_client() -> Result<Client> {
@@ -1446,10 +1663,54 @@ mod tests {
         build_client(ProxyConfig::default())
     }
 
+    fn fixture_proxy_client(proxy_url: &str) -> Result<Client> {
+        let proxy_url = proxy_url.replacen("http://", "http://fixture:p%40ss@", 1);
+        build_client(ProxyConfig::parse(Some(&proxy_url), None, "")?)
+    }
+
     async fn joined(thread: JoinHandle<Result<()>>) -> Result<()> {
         tokio::task::spawn_blocking(move || thread.join().map_err(|_| anyhow!("Fixture panicked")))
             .await???;
         Ok(())
+    }
+
+    async fn joined_task(
+        mut task: tokio::task::JoinHandle<Result<()>>,
+        timeout_ms: u64,
+    ) -> Result<()> {
+        let result = with_timeout(timeout_ms, &mut task).await;
+        if result.is_err() {
+            // A timed-out JoinHandle must not detach a fixture task from its test.
+            task.abort();
+            let _ = task.await;
+        }
+        result???;
+        Ok(())
+    }
+
+    async fn checked_fixture(
+        server: impl std::future::Future<Output = Result<()>>,
+        work: impl std::future::Future<Output = Result<()>>,
+    ) -> Result<()> {
+        let result = AssertUnwindSafe(work).catch_unwind().await;
+        // Join on errors and assertion panics too: a client-side failure alone can hide
+        // the fixture's accept/read failure. Do not turn a failed assertion into success.
+        let server = server.await;
+        match result {
+            Ok(client) => {
+                ensure!(
+                    client.is_ok() && server.is_ok(),
+                    "Transport fixture failed; client={client:?}; server={server:?}"
+                );
+                Ok(())
+            }
+            Err(panic) => {
+                if let Err(error) = server {
+                    eprintln!("Transport fixture server failed during client panic: {error:?}");
+                }
+                std::panic::resume_unwind(panic)
+            }
+        }
     }
 
     async fn incoming(connection: &mut Connection) -> Result<Frame> {
@@ -1483,6 +1744,7 @@ mod tests {
 
     #[tokio::test]
     async fn h2c_is_truly_duplex_and_frames_raw_outgoing_messages() -> Result<()> {
+        let client = fixture_client()?;
         let (url, thread) = fixture(|wire| {
             let first = envelope(0, b"initial");
             ensure!(
@@ -1501,7 +1763,7 @@ mod tests {
             // A real H2 peer retains the connection while the client half-closes its upload.
             wire.await_upload_end()
         })?;
-        let client = fixture_client()?;
+        checked_fixture(joined(thread), async {
         let mut connection = open(
             &client,
             &url,
@@ -1522,7 +1784,9 @@ mod tests {
             .await?
             .is_none());
         with_timeout(1000, connection.outgoing.closed()).await?;
-        joined(thread).await
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
@@ -1567,6 +1831,41 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn eager_unary_body_reader_is_cancelable_on_drop_and_shutdown() -> Result<()> {
+        for shutdown in [false, true] {
+            let client = fixture_client()?;
+            let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+            let (url, thread) = fixture(move |wire| {
+                ensure!(wire.request_bytes(3)? == b"raw", "Unary upload changed");
+                wire.headers()?;
+                wire.data(b"partial protobuf body", false)?;
+                let _ = ready_tx.send(());
+                wire.await_reset()
+            })?;
+            checked_fixture(joined(thread), async {
+                let owned = client.clone();
+                let work = tokio::spawn(async move {
+                    unary(&owned, &url, "/rpc", "fixture-token", b"raw".to_vec(), 0).await
+                });
+                with_timeout(2000, ready_rx).await??;
+                if shutdown {
+                    client.shutdown();
+                    assert!(with_timeout(1000, work).await??.is_err());
+                } else {
+                    work.abort();
+                    assert!(with_timeout(1000, work)
+                        .await?
+                        .expect_err("The dropped unary reader must be cancelled")
+                        .is_cancelled());
+                }
+                Ok(())
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
     #[test]
     fn usage_request_is_one_fixed_read_only_json_endpoint() -> Result<()> {
         let client = fixture_client()?;
@@ -1605,6 +1904,7 @@ mod tests {
             "spendLimitUsage": {"limitType": "team"}
         });
         let reply = serde_json::to_vec(&expected)?;
+        let client = fixture_client()?;
         let (url, thread) = fixture(move |wire| {
             ensure!(
                 wire.request_bytes(2)? == b"{}",
@@ -1613,18 +1913,21 @@ mod tests {
             wire.headers()?;
             wire.data(&reply, true)
         })?;
-        let client = fixture_client()?;
-        assert_eq!(
-            execute_usage(&client, usage_fixture_request(&client, &url)?).await?,
-            expected
-        );
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            assert_eq!(
+                execute_usage(&client, usage_fixture_request(&client, &url)?).await?,
+                expected
+            );
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
     async fn usage_rejects_invalid_json_redirects_and_oversize_without_echoing_body() -> Result<()>
     {
         for case in 0..4 {
+            let client = fixture_client()?;
             let (url, thread) = fixture(move |wire| {
                 ensure!(
                     wire.request_bytes(2)? == b"{}",
@@ -1652,25 +1955,27 @@ mod tests {
                     ),
                 }
             })?;
-            let client = fixture_client()?;
-            let error = execute_usage(&client, usage_fixture_request(&client, &url)?)
-                .await
-                .err()
-                .ok_or_else(|| anyhow!("Expected usage rejection"))?;
-            let text = format!("{error:?}");
-            assert!(!text.contains("private-response-fixture"));
-            assert!(!text.contains("fixture-token"));
-            let expected = [
-                "Invalid Cursor usage JSON",
-                "JSON object",
-                "HTTP 302",
-                "exceeds 1 MiB",
-            ][case];
-            assert!(
-                text.contains(expected),
-                "Unexpected sanitized error: {text}"
-            );
-            joined(thread).await?;
+            checked_fixture(joined(thread), async {
+                let error = execute_usage(&client, usage_fixture_request(&client, &url)?)
+                    .await
+                    .err()
+                    .ok_or_else(|| anyhow!("Expected usage rejection"))?;
+                let text = format!("{error:?}");
+                assert!(!text.contains("private-response-fixture"));
+                assert!(!text.contains("fixture-token"));
+                let expected = [
+                    "Invalid Cursor usage JSON",
+                    "JSON object",
+                    "HTTP 302",
+                    "exceeds 1 MiB",
+                ][case];
+                assert!(
+                    text.contains(expected),
+                    "Unexpected sanitized error: {text}"
+                );
+                Ok(())
+            })
+            .await?;
         }
         Ok(())
     }
@@ -1678,6 +1983,7 @@ mod tests {
     #[tokio::test]
     async fn usage_shutdown_cancels_a_pending_http2_request() -> Result<()> {
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let client = fixture_client()?;
         let (url, thread) = fixture(move |wire| {
             ensure!(
                 wire.request_bytes(2)? == b"{}",
@@ -1686,23 +1992,26 @@ mod tests {
             let _ = ready_tx.send(());
             wire.await_reset()
         })?;
-        let client = fixture_client()?;
-        let request = usage_fixture_request(&client, &url)?;
-        let work = execute_usage(&client, request);
-        tokio::pin!(work);
-        tokio::select! {
-            result = &mut work => bail!("Usage unexpectedly completed: {result:?}"),
-            result = ready_rx => result?,
-        }
-        client.shutdown();
-        let result = with_timeout(1000, work).await?;
-        assert!(result.is_err());
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let request = usage_fixture_request(&client, &url)?;
+            let work = execute_usage(&client, request);
+            tokio::pin!(work);
+            tokio::select! {
+                result = &mut work => bail!("Usage unexpectedly completed: {result:?}"),
+                result = ready_rx => result?,
+            }
+            client.shutdown();
+            let result = with_timeout(1000, work).await?;
+            assert!(result.is_err());
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
     async fn cancellation_drops_request_while_waiting_for_headers() -> Result<()> {
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let client = fixture_client()?;
         let (url, thread) = fixture(move |wire| {
             // Exhaust both default H2 request windows, without ever sending response headers
             // or WINDOW_UPDATE. Reset must not depend on either headers or upload capacity.
@@ -1713,27 +2022,30 @@ mod tests {
             let _ = ready_tx.send(());
             wire.await_reset()
         })?;
-        let client = fixture_client()?;
-        let mut connection = open(
-            &client,
-            &url,
-            "/rpc",
-            "fixture-token",
-            vec![0; 1024 * 1024],
-            0,
-        )
-        .await?;
-        with_timeout(3000, ready_rx).await??;
-        connection.cancel.cancel();
-        assert!(with_timeout(1000, connection.incoming.recv())
-            .await?
-            .is_none());
-        with_timeout(1000, connection.outgoing.closed()).await?;
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let mut connection = open(
+                &client,
+                &url,
+                "/rpc",
+                "fixture-token",
+                vec![0; 1024 * 1024],
+                0,
+            )
+            .await?;
+            with_timeout(3000, ready_rx).await??;
+            connection.cancel.cancel();
+            assert!(with_timeout(1000, connection.incoming.recv())
+                .await?
+                .is_none());
+            with_timeout(1000, connection.outgoing.closed()).await?;
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
     async fn cancellation_interrupts_full_incoming_queue() -> Result<()> {
+        let client = fixture_client()?;
         let (url, thread) = fixture(|wire| {
             wire.request_bytes(FRAME_HEADER)?;
             wire.headers()?;
@@ -1741,31 +2053,35 @@ mod tests {
             wire.data(&messages, false)?;
             wire.await_reset()
         })?;
-        let client = fixture_client()?;
-        let mut connection = open(&client, &url, "/rpc", "fixture-token", Vec::new(), 0).await?;
-        with_timeout(3000, async {
-            while connection.incoming.len() < QUEUE_CAPACITY {
-                tokio::task::yield_now().await;
+        checked_fixture(joined(thread), async {
+            let mut connection =
+                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 0).await?;
+            with_timeout(3000, async {
+                while connection.incoming.len() < QUEUE_CAPACITY {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await?;
+            connection.cancel.cancel();
+            with_timeout(1000, async {
+                while !connection.incoming.is_closed() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await?;
+            with_timeout(1000, connection.outgoing.closed()).await?;
+            while let Some(frame) = connection.incoming.recv().await {
+                assert!(matches!(frame?, Frame::Message(_)));
             }
+            Ok(())
         })
-        .await?;
-        connection.cancel.cancel();
-        with_timeout(1000, async {
-            while !connection.incoming.is_closed() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await?;
-        with_timeout(1000, connection.outgoing.closed()).await?;
-        while let Some(frame) = connection.incoming.recv().await {
-            assert!(matches!(frame?, Frame::Message(_)));
-        }
-        joined(thread).await
+        .await
     }
 
     #[tokio::test]
     async fn cancellation_unblocks_a_full_outgoing_queue() -> Result<()> {
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let client = fixture_client()?;
         let (url, thread) = fixture(move |wire| {
             ensure!(
                 wire.request_bytes(65_535)?.len() == 65_535,
@@ -1777,53 +2093,203 @@ mod tests {
             // closure or a local closed channel, passes this regression.
             wire.await_reset()
         })?;
-        let client = fixture_client()?;
-        let mut connection = open(
-            &client,
-            &url,
-            "/rpc",
-            "fixture-token",
-            vec![0; 1024 * 1024],
-            0,
-        )
-        .await?;
-        with_timeout(3000, ready_rx).await??;
-        for _ in 0..QUEUE_CAPACITY {
-            connection.outgoing.try_send(vec![1])?;
-        }
-        tokio::time::sleep(Duration::from_millis(30)).await;
-        while connection.outgoing.try_send(vec![1]).is_ok() {}
-        let blocked_send = connection.outgoing.send(vec![2]);
-        tokio::pin!(blocked_send);
-        assert!(futures_util::poll!(&mut blocked_send).is_pending());
-        connection.cancel.cancel();
-        assert!(with_timeout(1000, &mut blocked_send).await?.is_err());
-        assert!(with_timeout(1000, connection.incoming.recv())
-            .await?
-            .is_none());
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let mut connection = open(
+                &client,
+                &url,
+                "/rpc",
+                "fixture-token",
+                vec![0; 1024 * 1024],
+                0,
+            )
+            .await?;
+            with_timeout(3000, ready_rx).await??;
+            for _ in 0..QUEUE_CAPACITY {
+                connection.outgoing.try_send(vec![1])?;
+            }
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            while connection.outgoing.try_send(vec![1]).is_ok() {}
+            let blocked_send = connection.outgoing.send(vec![2]);
+            tokio::pin!(blocked_send);
+            assert!(futures_util::poll!(&mut blocked_send).is_pending());
+            connection.cancel.cancel();
+            assert!(with_timeout(1000, &mut blocked_send).await?.is_err());
+            assert!(with_timeout(1000, connection.incoming.recv())
+                .await?
+                .is_none());
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
     async fn header_timeout_drops_the_request() -> Result<()> {
+        let client = fixture_client()?;
         let (url, thread) = fixture(|wire| {
             wire.request_bytes(FRAME_HEADER)?;
             wire.await_reset()
         })?;
+        checked_fixture(joined(thread), async {
+            let mut connection =
+                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 200).await?;
+            let error = incoming(&mut connection)
+                .await
+                .err()
+                .ok_or_else(|| anyhow!("Expected header timeout"))?;
+            assert!(error.to_string().contains("timed out"));
+            with_timeout(1000, connection.outgoing.closed()).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    fn keepalive_client(silence_ms: u64, timeout_ms: u64) -> Result<Client> {
+        build_client_with(
+            ProxyConfig::default(),
+            Keepalive {
+                silence: Duration::from_millis(silence_ms),
+                timeout: Duration::from_millis(timeout_ms),
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn unanswered_keepalive_fails_a_silent_stream_before_any_idle_timeout() -> Result<()> {
+        let client = keepalive_client(100, 100)?;
+        let (url, thread) = fixture(|wire| {
+            wire.request_bytes(FRAME_HEADER)?;
+            wire.headers()?;
+            // A silently dropped peer: no DATA and no PONG.
+            thread::sleep(Duration::from_millis(1500));
+            Ok(())
+        })?;
+        checked_fixture(joined(thread), async {
+            let mut connection =
+                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
+            let started = Instant::now();
+            assert!(with_timeout(1000, incoming(&mut connection))
+                .await?
+                .is_err());
+            assert!(started.elapsed() < Duration::from_millis(1000));
+            Ok(())
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn answered_keepalive_pings_once_per_silent_period_and_never_when_idle() -> Result<()> {
+        let client = keepalive_client(100, 300)?;
+        let (url, thread) = fixture(|wire| {
+            wire.request_bytes(FRAME_HEADER)?;
+            wire.headers()?;
+            // Wire::read acknowledges every PING, like a healthy but quiet server.
+            let pings = |wire: &mut Wire, millis: u64| -> Result<usize> {
+                wire.socket
+                    .set_read_timeout(Some(Duration::from_millis(50)))?;
+                let deadline = Instant::now() + Duration::from_millis(millis);
+                let mut pings = 0;
+                while Instant::now() < deadline {
+                    match wire.read() {
+                        Ok((6, flags, _, _)) if flags & 1 == 0 => pings += 1,
+                        Ok(_) => {}
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                ErrorKind::WouldBlock | ErrorKind::TimedOut
+                            ) => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+                Ok(pings)
+            };
+            ensure!(
+                pings(wire, 600)? == 1,
+                "Expected one PING for one silent period"
+            );
+            wire.data(&envelope(2, b"{}"), true)?;
+            wire.socket.set_read_timeout(Some(Duration::from_secs(3)))?;
+            wire.await_upload_end()?;
+            ensure!(
+                pings(wire, 400)? == 0,
+                "An idle pooled connection must not be pinged"
+            );
+            Ok(())
+        })?;
+        checked_fixture(joined(thread), async {
+            let mut connection =
+                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
+            assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
+            Ok(())
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn header_timeout_retires_the_pooled_connection_for_later_rpcs() -> Result<()> {
         let client = fixture_client()?;
-        let mut connection = open(&client, &url, "/rpc", "fixture-token", Vec::new(), 200).await?;
-        let error = incoming(&mut connection)
-            .await
-            .err()
-            .ok_or_else(|| anyhow!("Expected header timeout"))?;
-        assert!(error.to_string().contains("timed out"));
-        with_timeout(1000, connection.outgoing.closed()).await?;
-        joined(thread).await
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let url = format!("http://{}", listener.local_addr()?);
+        listener.set_nonblocking(true)?;
+        let thread = thread::spawn(move || -> Result<()> {
+            let accept = || -> Result<Wire> {
+                let deadline = Instant::now() + Duration::from_secs(3);
+                let socket = loop {
+                    match listener.accept() {
+                        Ok((socket, _)) => break socket,
+                        Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                            ensure!(Instant::now() < deadline, "Client never redialed");
+                            thread::sleep(Duration::from_millis(2));
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                };
+                socket.set_nonblocking(false)?;
+                socket.set_read_timeout(Some(Duration::from_secs(3)))?;
+                let mut wire = Wire {
+                    socket,
+                    stream_id: 0,
+                };
+                let mut preface = [0; 24];
+                wire.socket.read_exact(&mut preface)?;
+                ensure!(
+                    &preface == b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n",
+                    "Missing H2 prior-knowledge preface"
+                );
+                wire.send(4, 0, 0, &[])?;
+                Ok(wire)
+            };
+            // Silently stalled: the connection stays open but never answers headers.
+            let mut stalled = accept()?;
+            stalled.request_bytes(FRAME_HEADER)?;
+            let mut fresh = accept()?;
+            ensure!(
+                fresh.request_bytes(FRAME_HEADER)? == envelope(0, b""),
+                "Invalid upload"
+            );
+            fresh.headers()?;
+            fresh.data(&envelope(2, b"{}"), true)?;
+            fresh.await_upload_end()?;
+            drop(stalled);
+            Ok(())
+        });
+        checked_fixture(joined(thread), async {
+            let mut first = open(&client, &url, "/rpc", "fixture-token", Vec::new(), 200).await?;
+            let error = incoming(&mut first)
+                .await
+                .err()
+                .ok_or_else(|| anyhow!("Expected header timeout"))?;
+            assert!(error.to_string().contains("timed out"));
+            let mut second = open(&client, &url, "/rpc", "fixture-token", Vec::new(), 2000).await?;
+            assert!(matches!(incoming(&mut second).await?, Frame::End(_)));
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
     async fn completed_streams_reuse_one_pooled_connection() -> Result<()> {
         // This fixture accepts exactly one TCP connection; a reconnect cannot satisfy turn 2.
+        let client = fixture_client()?;
         let (url, thread) = fixture(|wire| {
             let mut previous = 0;
             for _ in 0..3 {
@@ -1842,17 +2308,19 @@ mod tests {
             }
             Ok(())
         })?;
-        let client = fixture_client()?;
-        for _ in 0..3 {
-            let mut connection =
-                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
-            assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
-            assert!(with_timeout(1000, connection.incoming.recv())
-                .await?
-                .is_none());
-            with_timeout(1000, connection.outgoing.closed()).await?;
-        }
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            for _ in 0..3 {
+                let mut connection =
+                    open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
+                assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
+                assert!(with_timeout(1000, connection.incoming.recv())
+                    .await?
+                    .is_none());
+                with_timeout(1000, connection.outgoing.closed()).await?;
+            }
+            Ok(())
+        })
+        .await
     }
 
     async fn h2_request_message(body: &mut h2::RecvStream, expected: &[u8]) -> Result<()> {
@@ -1871,7 +2339,122 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn slow_consumer_does_not_spend_healthy_scopes_connection_credit() -> Result<()> {
+        // Trust initialization must not consume any fixture deadline.
+        let client = fixture_client()?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let url = format!("http://{}", listener.local_addr()?);
+        let (requests_tx, mut requests_rx) = mpsc::channel(3);
+        let (stalled_tx, stalled_rx) = tokio::sync::oneshot::channel();
+        let stop = CancellationToken::new();
+        let driver_stop = stop.clone();
+        let driver = tokio::spawn(async move {
+            // One accept only: B and the post-cancel C must reuse A's connection.
+            let (socket, _) = listener.accept().await?;
+            let mut connection = h2::server::handshake(socket).await?;
+            loop {
+                tokio::select! {
+                    _ = driver_stop.cancelled() => return Ok::<(), anyhow::Error>(()),
+                    request = connection.accept() => match request {
+                        Some(request) => requests_tx.send(request?).await?,
+                        None => return Ok(()),
+                    },
+                }
+            }
+        });
+        let peer = tokio::spawn(async move {
+            let (request, mut response) = requests_rx.recv().await.ok_or_else(h2_error)?;
+            let mut body = request.into_body();
+            h2_request_message(&mut body, b"slow").await?;
+            let mut slow = response.send_response(http::Response::new(()), false)?;
+            let flooded = tokio::time::timeout(Duration::from_millis(100), async {
+                for _ in 0..128 {
+                    send_message(&mut slow, Payload::from_vec(vec![b'a'; 16 * 1024])?).await?;
+                }
+                Ok::<(), anyhow::Error>(())
+            })
+            .await;
+            ensure!(
+                flooded.is_err(),
+                "Slow stream was not bounded by receive backpressure"
+            );
+            stalled_tx.send(()).map_err(|_| h2_error())?;
+
+            let (request, mut response) = requests_rx.recv().await.ok_or_else(h2_error)?;
+            let mut healthy_body = request.into_body();
+            h2_request_message(&mut healthy_body, b"healthy").await?;
+            let mut healthy = response.send_response(http::Response::new(()), false)?;
+            healthy.send_data(
+                Bytes::from([envelope(0, b"healthy response"), envelope(2, b"{}")].concat()),
+                true,
+            )?;
+            ensure!(
+                poll_fn(|cx| slow.poll_reset(cx)).await? == h2::Reason::CANCEL,
+                "Expected only A to be cancelled after B completed"
+            );
+
+            let (request, mut response) = requests_rx.recv().await.ok_or_else(h2_error)?;
+            let mut reused_body = request.into_body();
+            h2_request_message(&mut reused_body, b"reuse").await?;
+            let mut reused = response.send_response(http::Response::new(()), false)?;
+            reused.send_data(Bytes::from(envelope(2, b"{}")), true)?;
+            while let Some(chunk) = reused_body.data().await {
+                chunk?;
+            }
+            Ok::<(), anyhow::Error>(())
+        });
+        checked_fixture(
+            async {
+                let peer = joined_task(peer, 3000).await;
+                stop.cancel();
+                let driver = joined_task(driver, 1000).await;
+                ensure!(
+                    peer.is_ok() && driver.is_ok(),
+                    "Async fixture failed; peer={peer:?}; driver={driver:?}"
+                );
+                Ok(())
+            },
+            async {
+        let slow = open(&client, &url, "/slow", "fixture-a", b"slow".to_vec(), 3000).await?;
+        with_timeout(2000, stalled_rx).await??;
+        assert_eq!(slow.incoming.len(), QUEUE_CAPACITY);
+        let mut healthy = open(
+            &client,
+            &url,
+            "/healthy",
+            "fixture-b",
+            b"healthy".to_vec(),
+            2000,
+        )
+        .await?;
+        assert!(
+            matches!(incoming(&mut healthy).await?, Frame::Message(bytes) if bytes == b"healthy response")
+        );
+        assert!(matches!(incoming(&mut healthy).await?, Frame::End(_)));
+        // A has not resumed, closed, or cancelled at the moment B completes.
+        assert_eq!(slow.incoming.len(), QUEUE_CAPACITY);
+        assert!(!slow.cancel.is_cancelled());
+        slow.cancel.cancel();
+        with_timeout(1000, slow.outgoing.closed()).await?;
+        let mut reused = open(
+            &client,
+            &url,
+            "/reuse",
+            "fixture-c",
+            b"reuse".to_vec(),
+            2000,
+        )
+        .await?;
+        assert!(matches!(incoming(&mut reused).await?, Frame::End(_)));
+                Ok(())
+            },
+        )
+        .await
+    }
+
+    #[tokio::test]
     async fn cancelling_one_pooled_stream_preserves_the_other_scope_and_headers() -> Result<()> {
+        let client = fixture_client()?;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let url = format!("http://{}", listener.local_addr()?);
         let (requests_tx, mut requests_rx) = mpsc::channel(2);
@@ -1936,25 +2519,39 @@ mod tests {
             }
             Ok::<(), anyhow::Error>(())
         });
-        let client = fixture_client()?;
-        let mut first = open(&client, &url, "/one", "fixture-one", b"one".to_vec(), 1000).await?;
-        assert!(matches!(incoming(&mut first).await?, Frame::Message(_)));
-        let mut second = open(&client, &url, "/two", "fixture-two", b"two".to_vec(), 1000).await?;
-        assert!(matches!(incoming(&mut second).await?, Frame::Message(_)));
-        first.cancel.cancel();
-        with_timeout(1000, first.outgoing.closed()).await?;
-        assert!(with_timeout(1000, first.incoming.recv()).await?.is_none());
-        second.outgoing.send(b"still alive".to_vec()).await?;
-        assert!(matches!(incoming(&mut second).await?, Frame::End(_)));
-        with_timeout(3000, peer).await???;
-        stop.cancel();
-        with_timeout(1000, driver).await???;
-        Ok(())
+        checked_fixture(
+            async {
+                let peer = joined_task(peer, 3000).await;
+                stop.cancel();
+                let driver = joined_task(driver, 1000).await;
+                ensure!(
+                    peer.is_ok() && driver.is_ok(),
+                    "Async fixture failed; peer={peer:?}; driver={driver:?}"
+                );
+                Ok(())
+            },
+            async {
+                let mut first =
+                    open(&client, &url, "/one", "fixture-one", b"one".to_vec(), 1000).await?;
+                assert!(matches!(incoming(&mut first).await?, Frame::Message(_)));
+                let mut second =
+                    open(&client, &url, "/two", "fixture-two", b"two".to_vec(), 1000).await?;
+                assert!(matches!(incoming(&mut second).await?, Frame::Message(_)));
+                first.cancel.cancel();
+                with_timeout(1000, first.outgoing.closed()).await?;
+                assert!(with_timeout(1000, first.incoming.recv()).await?.is_none());
+                second.outgoing.send(b"still alive".to_vec()).await?;
+                assert!(matches!(incoming(&mut second).await?, Frame::End(_)));
+                Ok(())
+            },
+        )
+        .await
     }
 
     #[tokio::test]
     async fn zero_window_reset_keeps_the_other_pooled_stream_alive() -> Result<()> {
         let (reset_tx, reset_rx) = tokio::sync::oneshot::channel();
+        let client = fixture_client()?;
         let (url, thread) = fixture(move |wire| {
             ensure!(
                 wire.request_bytes(65_535)?.len() == 65_535,
@@ -1985,33 +2582,36 @@ mod tests {
             wire.data(&envelope(2, b"{}"), true)?;
             wire.await_upload_end()
         })?;
-        let client = fixture_client()?;
-        let mut first = open(
-            &client,
-            &url,
-            "/one",
-            "fixture-one",
-            vec![0; 1024 * 1024],
-            1000,
-        )
-        .await?;
-        assert!(matches!(incoming(&mut first).await?, Frame::Message(_)));
-        let mut second = open(&client, &url, "/two", "fixture-two", Vec::new(), 1000).await?;
-        assert!(matches!(incoming(&mut second).await?, Frame::Message(_)));
-        first.cancel.cancel();
-        with_timeout(1000, first.outgoing.closed()).await?;
-        assert!(with_timeout(1000, first.incoming.recv()).await?.is_none());
-        with_timeout(1000, reset_rx).await??;
-        second.outgoing.send(b"survived".to_vec()).await?;
-        assert!(matches!(incoming(&mut second).await?, Frame::End(_)));
-        with_timeout(1000, second.outgoing.closed()).await?;
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let mut first = open(
+                &client,
+                &url,
+                "/one",
+                "fixture-one",
+                vec![0; 1024 * 1024],
+                1000,
+            )
+            .await?;
+            assert!(matches!(incoming(&mut first).await?, Frame::Message(_)));
+            let mut second = open(&client, &url, "/two", "fixture-two", Vec::new(), 1000).await?;
+            assert!(matches!(incoming(&mut second).await?, Frame::Message(_)));
+            first.cancel.cancel();
+            with_timeout(1000, first.outgoing.closed()).await?;
+            assert!(with_timeout(1000, first.incoming.recv()).await?.is_none());
+            with_timeout(1000, reset_rx).await??;
+            second.outgoing.send(b"survived".to_vec()).await?;
+            assert!(matches!(incoming(&mut second).await?, Frame::End(_)));
+            with_timeout(1000, second.outgoing.closed()).await?;
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
     async fn shutdown_and_last_client_drop_cancel_owned_drivers() -> Result<()> {
         for explicit in [false, true] {
             let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+            let client = fixture_client()?;
             let (url, thread) = fixture(move |wire| {
                 wire.request_bytes(FRAME_HEADER)?;
                 let _ = ready_tx.send(());
@@ -2031,30 +2631,34 @@ mod tests {
                     }
                 }
             })?;
-            let client = fixture_client()?;
-            let mut connection =
-                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 0).await?;
-            with_timeout(3000, ready_rx).await??;
-            let clone = client.clone();
-            drop(client);
-            // A live clone still owns this connection.
-            assert!(!connection.incoming.is_closed());
-            let retained = if explicit {
-                clone.shutdown();
-                assert!(open(&clone, &url, "/rpc", "fixture-token", Vec::new(), 0)
-                    .await
-                    .is_err());
-                clone.shutdown(); // idempotent
-                Some(clone)
-            } else {
-                drop(clone);
-                None
-            };
-            assert!(with_timeout(1000, connection.incoming.recv())
-                .await?
-                .is_none());
-            with_timeout(1000, connection.outgoing.closed()).await?;
-            joined(thread).await?;
+            // Keep the explicitly shut-down clone alive until the server has joined.
+            let mut retained = None;
+            checked_fixture(joined(thread), async {
+                let mut connection =
+                    open(&client, &url, "/rpc", "fixture-token", Vec::new(), 0).await?;
+                with_timeout(3000, ready_rx).await??;
+                let clone = client.clone();
+                drop(client);
+                // A live clone still owns this connection.
+                assert!(!connection.incoming.is_closed());
+                retained = if explicit {
+                    clone.shutdown();
+                    assert!(open(&clone, &url, "/rpc", "fixture-token", Vec::new(), 0)
+                        .await
+                        .is_err());
+                    clone.shutdown(); // idempotent
+                    Some(clone)
+                } else {
+                    drop(clone);
+                    None
+                };
+                assert!(with_timeout(1000, connection.incoming.recv())
+                    .await?
+                    .is_none());
+                with_timeout(1000, connection.outgoing.closed()).await?;
+                Ok(())
+            })
+            .await?;
             drop(retained);
         }
         Ok(())
@@ -2063,6 +2667,7 @@ mod tests {
     #[tokio::test]
     async fn dropping_incoming_resets_a_flow_controlled_stream() -> Result<()> {
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let client = fixture_client()?;
         let (url, thread) = fixture(move |wire| {
             ensure!(
                 wire.request_bytes(65_535)?.len() == 65_535,
@@ -2071,25 +2676,27 @@ mod tests {
             let _ = ready_tx.send(());
             wire.await_reset()
         })?;
-        let client = fixture_client()?;
-        let connection = open(
-            &client,
-            &url,
-            "/rpc",
-            "fixture-token",
-            vec![0; 1024 * 1024],
-            0,
-        )
-        .await?;
-        with_timeout(3000, ready_rx).await??;
-        drop(connection.incoming);
-        with_timeout(1000, connection.outgoing.closed()).await?;
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let connection = open(
+                &client,
+                &url,
+                "/rpc",
+                "fixture-token",
+                vec![0; 1024 * 1024],
+                0,
+            )
+            .await?;
+            with_timeout(3000, ready_rx).await??;
+            drop(connection.incoming);
+            with_timeout(1000, connection.outgoing.closed()).await?;
+            Ok(())
+        })
+        .await
     }
 
     #[tokio::test]
     async fn streaming_uses_authenticated_http_connect_proxy() -> Result<()> {
-        let (proxy_url, thread) = fixture_with_connect(true, |wire| {
+        let (client, _, thread) = fixture_with_setup(true, fixture_proxy_client, |wire| {
             ensure!(
                 wire.request_bytes(FRAME_HEADER)? == envelope(0, b""),
                 "Invalid proxied upload"
@@ -2098,39 +2705,111 @@ mod tests {
             wire.data(&envelope(2, b"{}"), true)?;
             wire.await_upload_end()
         })?;
-        let proxy_url = proxy_url.replacen("http://", "http://fixture:p%40ss@", 1);
-        let client = build_client(ProxyConfig::parse(Some(&proxy_url), None, "")?)?;
-        let mut connection = open(
-            &client,
-            "http://127.0.0.1:9",
-            "/rpc",
-            "fixture-token",
-            Vec::new(),
-            1000,
-        )
-        .await?;
-        assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
-        with_timeout(1000, connection.outgoing.closed()).await?;
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let mut connection = open(
+                &client,
+                "http://127.0.0.1:9",
+                "/rpc",
+                "fixture-token",
+                Vec::new(),
+                1000,
+            )
+            .await?;
+            assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
+            with_timeout(1000, connection.outgoing.closed()).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn url_dependent_client_setup_precedes_the_fixture_accept_budget() -> Result<()> {
+        let (client, _, thread) = fixture_with_setup(
+            true,
+            |url| {
+                // Deliberately exceed the unchanged 3s accept budget, then construct the
+                // actual native-trust/reqwest client using the bound proxy URL.
+                thread::sleep(Duration::from_millis(3300));
+                fixture_proxy_client(url)
+            },
+            |wire| {
+                ensure!(
+                    wire.request_bytes(envelope(0, b"setup").len())? == envelope(0, b"setup"),
+                    "Invalid upload after delayed setup"
+                );
+                wire.headers()?;
+                wire.data(&envelope(2, b"{}"), true)?;
+                wire.await_upload_end()
+            },
+        )?;
+        checked_fixture(joined(thread), async {
+            let mut connection = open(
+                &client,
+                "http://127.0.0.1:9",
+                "/rpc",
+                "fixture-token",
+                b"setup".to_vec(),
+                1000,
+            )
+            .await?;
+            assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
+            with_timeout(1000, connection.outgoing.closed()).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn fixture_errors_retain_both_client_and_joined_server_diagnostics() -> Result<()> {
+        let thread = thread::spawn(|| bail!("fixture server failure"));
+        let error = checked_fixture(joined(thread), async { bail!("fixture client failure") })
+            .await
+            .expect_err("Both fixture failures must fail the test");
+        let text = format!("{error:?}");
+        assert!(text.contains("fixture client failure"));
+        assert!(text.contains("fixture server failure"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fixture_assertion_panics_still_join_the_server() -> Result<()> {
+        let finished = Arc::new(AtomicBool::new(false));
+        let server_finished = finished.clone();
+        let thread = thread::spawn(move || {
+            server_finished.store(true, Ordering::SeqCst);
+            Ok(())
+        });
+        let result = AssertUnwindSafe(checked_fixture(joined(thread), async {
+            panic!("fixture assertion failure")
+        }))
+        .catch_unwind()
+        .await;
+        assert!(result.is_err());
+        assert!(finished.load(Ordering::SeqCst));
+        Ok(())
     }
 
     #[tokio::test]
     async fn no_proxy_bypasses_a_configured_proxy_for_loopback() -> Result<()> {
+        let client = build_client(ProxyConfig::parse(
+            Some("http://127.0.0.1:9"),
+            None,
+            "127.0.0.0/8",
+        )?)?;
         let (url, thread) = fixture(|wire| {
             wire.request_bytes(FRAME_HEADER)?;
             wire.headers()?;
             wire.data(&envelope(2, b"{}"), true)?;
             wire.await_upload_end()
         })?;
-        let client = build_client(ProxyConfig::parse(
-            Some("http://127.0.0.1:9"),
-            None,
-            "127.0.0.0/8",
-        )?)?;
-        let mut connection = open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
-        assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
-        with_timeout(1000, connection.outgoing.closed()).await?;
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let mut connection =
+                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
+            assert!(matches!(incoming(&mut connection).await?, Frame::End(_)));
+            with_timeout(1000, connection.outgoing.closed()).await?;
+            Ok(())
+        })
+        .await
     }
 
     #[test]
@@ -2186,20 +2865,24 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_rejects_redirect_status_without_following_it() -> Result<()> {
+        let client = fixture_client()?;
         let (url, thread) = fixture(|wire| {
             wire.request_bytes(FRAME_HEADER)?;
             // HPACK literal :status = 302. No redirect or HTTP/1 fallback is permitted.
             wire.send(1, 4, wire.stream_id, &[0x08, 3, b'3', b'0', b'2'])?;
             wire.await_reset()
         })?;
-        let client = fixture_client()?;
-        let mut connection = open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
-        let error = incoming(&mut connection)
-            .await
-            .err()
-            .ok_or_else(|| anyhow!("Expected status failure"))?;
-        assert!(error.to_string().contains("HTTP 302"));
-        joined(thread).await
+        checked_fixture(joined(thread), async {
+            let mut connection =
+                open(&client, &url, "/rpc", "fixture-token", Vec::new(), 1000).await?;
+            let error = incoming(&mut connection)
+                .await
+                .err()
+                .ok_or_else(|| anyhow!("Expected status failure"))?;
+            assert!(error.to_string().contains("HTTP 302"));
+            Ok(())
+        })
+        .await
     }
 
     #[test]

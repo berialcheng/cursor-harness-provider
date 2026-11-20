@@ -1,5 +1,27 @@
 # Pi focused completion handoff
 
+Historical handoff for the initial migration. Its test counts and Max/system-refresh limitations below describe that snapshot, not current behavior. Current reliability, image, parameter-route and audit M1–M10/L1/C1 changes are documented in [Pi replacement review](Pi_REPLACEMENT_REVIEW.md) and [capabilities](CAPABILITIES.md).
+
+## Current operational handoff — local acceptance passed (2026-11-10)
+
+- Latest evidence: `VALIDATION.json` → `operationalHardening20261110`. Full check: 126 Rust / 512 JS-host tests in 48 files, typecheck/fmt/clippy/source guards. Packed Pi1.4.0/1.5.1 each passed 6+1 gates including actual RPC operations. SDK1.5.1 injected-engine suite: 121 tests. macOS26.7.1 arm64/Node22.22.0, OpenCode2.2.5/Bun1.3.13 only; remote targets, minimum OS and power loss remain unqualified.
+- [OPERATIONS.md](OPERATIONS.md) is the operator/rollback runbook. Provider auth waits default to 25s (1–30000ms), not whole human-login/tool deadlines; cancelled/replaced owners ignore late results. Optional deadline helpers use `@cursor-harness-provider/native/lifecycle`, keeping the default RustEngine declaration usable with ES2023 alone.
+- Pi doctor exposes phase/recovery/resource snapshots. Reset is known-full-scope only with UI confirmation or `--scope HASH --confirm-discard`; no args are dry help. Stop own work/drain native starts; 5s maximum (`PI_CURSOR_RESET_TIMEOUT_MS` ≤5000ms) timeout stays fenced, never success/tool undo.
+- Cache: a known scope anchors **root-wide** dry-run/default or explicitly consented apply (`--apply --confirm-prune` headless). Expired payloads become tombstones; active/locked/corrupt records are skipped. Native byte/mode/mtime/inventory checks passed. No arbitrary-root/auth lookup/JS filesystem fallback/DSO cleanup.
+- Limits: 512MiB tracked payload per loaded core generation, not RSS (containers/allocator/runtime/old DSOs excluded); per-root 1GiB committed/4096 recognized regular records plus serialized 200MiB staging (unsafe/unrecognized/lock/legacy orphan files excluded). Expiry 24h on access unless explicit maintenance; not encryption/secure erase.
+- Runtime-local route pins preserve tool turns through metadata changes, not cross-process migration. No account/endpoint/model borrowing; retain fully reconciled quiescent rebuilds.
+- Qualify injected/native/real-host/exact packed artifacts separately, per platform; SIGKILL is not power-loss testing. Rollback needs explicit installation approval, exact native/Pi/OpenCode trio and cold host restart; no journal backward-compatibility assumption, unknown-action auto-clear, `auth.json` copy or token migration.
+
+## Historical audit handoff — local acceptance passed (2026-11-10 snapshot)
+
+- M1–M10/L1 safeguards are implemented across Rust bounded transport/protocol/recovery, OpenCode cleanup/admission/catalog lifecycle, Pi OAuth/model routing and canonical package staging. The replacement review records the design boundaries; the historical passes below do not certify these latest changes.
+- C1 is implemented for `cursor-native-rust` only: live ephemeral model-owner UUID selection, exact live parent-session fallback only for untagged models, and rejection of stale/ambiguous/mismatched ownership before auth/native work. Auth is canonical to that owner and same-account refresh only; compat checkpoint/request-kind namespaces are isolated. No-ID one-shots disable tools and clean on success; stable logical IDs retain host tool continuations, with uncertainty retained on errors.
+- Retained provider configurations snapshot the owned runtime, so BTW configurations cannot borrow a replacement parent runtime. No last-owner/unique-owner guessing or override of the old API is added.
+- The build ships `packages/pi/src/extension.ts` → `dist/extension.ts`, with private-root/public Pi manifests selecting those entries respectively. The shim imports the actual host registry and injects it into the backend through optional dependencies; compiled `dist/index.js` stays programmatic, not a manual extension entry. Physical compiled-native ESM and Pi's extension registry can differ even at the same SDK version; bundling an SDK/private host API is not a solution.
+- Final checks passed: 112 Rust tests, 377 JS/host tests in 42 files, typecheck/rustfmt/clippy, source guard and whitespace checks. Actual offline-installed tarballs passed all six original host cases plus one advanced catalog/restart/image/Max/compat case on each of Pi1.4 and Pi1.5 (with OpenCode2.2.5). SDK1.5 additionally passed 25 injected-engine ownership/lifecycle unit tests. Dated audit evidence and native hash are in `VALIDATION.json` → `auditRemediation20261110`; these passes do not qualify subsequent operational changes. No installed provider or credentials were changed, no live Cursor calls made, and no commit/publish performed.
+
+## Historical initial-migration snapshot
+
 ## Fixes
 
 - Kept SDK-standard mutable assistant-message references. The balancing test now spies on `stream.push` immediately after `streamSimple` and clones only its test snapshots at emission time.

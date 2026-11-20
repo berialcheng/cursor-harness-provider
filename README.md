@@ -10,9 +10,10 @@ Not affiliated with or endorsed by Cursor/Anysphere. Use only an account you are
 
 ## Status
 
-**0.3.0, experimental.** Locally validated on macOS arm64 with Node22.22, Rust1.99.1, Pi1.4/1.5 and OpenCode2.2.5/Bun.
+**0.3.0, experimental.** Current local qualification: macOS26.7.1 arm64, Node22.22.0, Rust1.99.1, Pi1.4.0/1.5.1 and OpenCode2.2.5/Bun1.3.13.
 This source migration was verified against local mock Cursor HTTP/2 in the real hosts. It is not a fresh live-service certification of every model or feature.
 The earlier single-host Rust implementation had live Auto text/tool smoke tests; do not confuse those with full dual-host acceptance.
+The earlier 2026-11-10 audit recorded 112 Rust / 377 JS tests. **Current operational hardening passed 126 Rust tests and 512 JS/host tests in 48 files**, plus offline-installed packed-host gates on Pi1.4.0 and Pi1.5.1. SDK1.5.1 additionally passed 121 injected-engine ownership/lifecycle tests. See [dated evidence](docs/VALIDATION.json) and [operations/rollback](docs/OPERATIONS.md). These are local mock-backed passes, not live-service, minimum-OS or fresh remote three-target certification.
 Source is hosted on [GitHub](https://github.com/berialcheng/cursor-harness-provider). See [Actions](https://github.com/berialcheng/cursor-harness-provider/actions) for current remote CI results; local validation is not proof of a successful remote run. Setup placeholders are not provider releases; see the registry and staged-release workflow for the current publication state.
 
 ## Layout
@@ -28,7 +29,7 @@ test/reference/       # Earlier JS implementation, test oracles only
 licenses/             # Locked target-specific third-party notice inventory
 ```
 
-Planned public packages use `@cursor-harness-provider/native`, `/pi` and `/opencode`. The root workspace remains private. Stable host provider/API/OAuth identifiers remain unchanged; npm package names are a separate layer.
+Planned public packages use `@cursor-harness-provider/native`, `/pi` and `/opencode`. The root workspace remains private. Host provider/OAuth identifiers are retained; Pi uses the distinct `cursor-native-rust` API without overriding the old API. npm package names are a separate layer.
 
 ## Build
 
@@ -48,7 +49,7 @@ Initial local development used an existing npm mirror after public npm connectio
 
 ## Load locally
 
-Build and test first. The following are **manual installation instructions**, not changes performed by this migration.
+Build and qualify exact artifacts first. The following are **manual installation instructions requiring explicit installation approval**, not changes performed by this migration. Rollback requires the exact native/Pi/OpenCode package trio and a full host restart; do not assume journal backward compatibility. See [operations](docs/OPERATIONS.md).
 
 ### OpenCode 2.2.5
 
@@ -70,16 +71,26 @@ pi remove npm:@rahularya01/pi-cursor
 pi install /absolute/path/to/cursor-harness-provider
 ```
 Restart Pi or use `/reload` when idle. Provider/model remains `cursor/auto`, with the distinct Rust API `cursor-native-rust`.
+Pi loads a tiny TypeScript shim: private-root `packages/pi/src/extension.ts`, public-package `dist/extension.ts`. It bridges Pi's actual host registry to the compiled backend; `dist/index.js` remains a programmatic export, **not a manual extension entry**. Source and offline-installed packed entries passed actual-host checks on Pi1.4/1.5.
 Use `/login cursor` for browser OAuth or explicit CLI/IDE credential reuse. Never paste a token into this repository.
-`/cursor.models`, `/cursor.doctor` and `/cursor.usage` expose the implemented catalog/diagnostics/usage RPC.
-`PI_CURSOR_SYSTEM_CREDENTIALS=0` disables legacy CLI/IDE credential lookup.
+`/cursor.models`, `/cursor.doctor` and `/cursor.usage` expose the implemented catalog/diagnostics/usage RPC. Model discovery enriches the basic catalog with explicit image and parameter-variant metadata; Pi persists public catalog snapshots for offline restart. Max Mode and reasoning `max` remain separate selections, with only advertised combinations exposed.
+Images must arrive as Pi attachments or host-authorized image tool results; plain clipboard/file paths are never read automatically by the provider.
+`PI_CURSOR_SYSTEM_CREDENTIALS=0` disables legacy CLI/IDE credential lookup; reuse is access-token-only and never rotates an external refresh pair.
 Host-owned OAuth expiry refresh/persistence stays inside Pi; an unchanged rejected token requires reconnecting rather than unsafe shadow refresh-token rotation.
 
-**Important:** This is not full upstream Pi feature parity. See [capabilities](docs/CAPABILITIES.md) before replacing a working provider.
+**Important:** This is not a blanket upstream feature-parity or live-service certification. See [capabilities](docs/CAPABILITIES.md) and the [replacement validation](docs/Pi_REPLACEMENT_REVIEW.md) before replacing a working provider. Existing installed providers are not changed by building or testing this repository.
+
+## Operational recovery — locally qualified
+
+Provider-initiated auth callbacks default to 25s, configurable within **1–30000ms** via `PI_CURSOR_AUTH_TIMEOUT_MS` / `OPENCODE_CURSOR_AUTH_TIMEOUT_MS`; this is not a whole human-login or tool deadline. Cancelled/replaced owners must not apply late results. `/cursor.doctor` reports request phases and recovery/resource snapshots. `/cursor.reset` without arguments only lists help/scopes; discarding a known full scope requires explicit UI confirmation or `--scope HASH --confirm-discard`. It stops its own requests/drains native starts; the default 5s timeout (`PI_CURSOR_RESET_TIMEOUT_MS`, at most 5000ms) leaves the scope fenced, not successfully reset. It never undoes tools.
+
+`/cursor.cache --scope HASH` anchors **root-wide** dry-run maintenance; `--apply` requires explicit UI consent or headless `--confirm-prune`. Eligible expired payloads become fail-closed tombstones; active/locked/corrupt records are skipped. No arbitrary-root reads, auth lookup, JS filesystem fallback or DSO cleanup. The 512MiB tracked-payload budget is per loaded core generation, **not RSS**; root cache quotas are 1GiB committed/4096 recognized regular records plus serialized 200MiB staging. Local storage/accounting and dry-run inventory checks passed; exclusions and noninterruptible-I/O limits are in the [runbook](docs/OPERATIONS.md). This is not encryption or secure erase.
+
+Runtime-local tool-turn route pins survive metadata changes, not process migration. Account/endpoint/model changes cannot borrow turns; fully reconciled quiescent rebuilding remains supported.
 
 ## Safety and limitations
 
-All file/shell/network tool actions stay at the host's permission gate; Cursor-native local/fetch operations are rejected. This is not an OS sandbox.
+All file/shell/network tool actions stay at the host's permission gate. Prohibited native execution/interaction bodies are handled before protobuf allocation and denied with typed failures, never fake success; supported context queries still return registered host context. This is not an OS sandbox.
 Journals can contain full prompts/tool data. Private file permissions are not encryption. Pi/OpenCode use separate host namespaces.
 Uncertain actions, mixed/unknown executable protocol messages, and unsafe partial-output replays fail closed. No exactly-once guarantee.
 No performance, quota, cache savings or billing superiority is claimed.

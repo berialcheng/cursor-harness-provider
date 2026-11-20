@@ -1,4 +1,5 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, vi } from "vitest";
@@ -28,7 +29,20 @@ function isolate() {
 }
 isolate();
 beforeEach(isolate);
-afterAll(() => {
-  try { shutdownRustEngines(); }
-  finally { vi.unstubAllEnvs(); rmSync(cache, { recursive: true, force: true }); }
+afterAll(async () => {
+  try {
+    shutdownRustEngines();
+    // Shutdown cancels native work, but an in-progress final commit may finish.
+    // Yield and traverse afresh on ENOTEMPTY; retrying only rmdir on a stale
+    // directory snapshot cannot remove a late atomic rename. Keep fixtures'
+    // environment isolated until this bounded teardown has finished.
+    for (let attempt = 0; ; attempt++) {
+      try { await rm(cache, { recursive: true, force: true }); break; }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (attempt >= 12 || (code !== "ENOTEMPTY" && code !== "EBUSY")) throw error;
+        await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 10));
+      }
+    }
+  } finally { vi.unstubAllEnvs(); }
 });

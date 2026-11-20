@@ -7,3 +7,10 @@ version = "0.3.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.99.1"
+
+# One optimized link for the shipped Node-API library: about half the size of the
+# default profile. Panics still unwind; only the symbol table is stripped.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

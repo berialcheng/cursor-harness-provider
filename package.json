@@ -17,7 +17,7 @@
   ],
   "pi": {
     "extensions": [
-      "./packages/pi/dist/index.js"
+      "./packages/pi/src/extension.ts"
     ]
   },
   "scripts": {

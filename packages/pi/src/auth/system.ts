@@ -4,7 +4,6 @@
 import { execFile } from "node:child_process";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import { abortable, isRecord } from "../security.js";
 import { tokenExpiry, type OAuthClient } from "./oauth.js";
 
@@ -29,8 +28,7 @@ async function keychain(signal: AbortSignal): Promise<StoredTokens> {
     execFile("security", ["find-generic-password", "-s", service, "-a", "cursor-user", "-w"],
       { encoding: "utf8", timeout: 2000, signal }, (error, stdout) => resolve(error ? undefined : stdout.trim() || undefined));
   });
-  const [accessToken, refreshToken] = await Promise.all([read("cursor-access-token"), read("cursor-refresh-token")]);
-  return { accessToken, refreshToken };
+  return { accessToken: await read("cursor-access-token") };
 }
 async function ide(env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<StoredTokens> {
   signal.throwIfAborted();
@@ -44,7 +42,6 @@ async function ide(env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<StoredT
     const user = windowsUsernameFromEnv(env);
     if (user) paths.push(join("/mnt/c/Users", user, "AppData/Roaming/Cursor/User/globalStorage/state.vscdb"));
   }
-  let fallback: StoredTokens = {};
   for (const path of paths) {
     signal.throwIfAborted();
     try {
@@ -55,19 +52,18 @@ async function ide(env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<StoredT
           const row = db.prepare("SELECT value FROM ItemTable WHERE key = ?").get("cursorAuth/" + name);
           return isRecord(row) && typeof row.value === "string" ? row.value.trim() || undefined : undefined;
         };
-        pair = { accessToken: read("accessToken"), refreshToken: read("refreshToken") };
+        pair = { accessToken: read("accessToken") };
       } finally { db.close(); }
       if (pair.accessToken && tokenExpiry(pair.accessToken) > Date.now()) return pair;
-      if (!fallback.refreshToken && pair.refreshToken) fallback = pair;
     } catch { /* absent/locked profile */ }
   }
-  return fallback;
+  return {};
 }
-export function createSystemResolver(oauth: OAuthClient, deps: SystemDependencies = {}) {
-  // Session-only hashed backoff. No credential/cache files are written.
-  const failures = new Map<string, number>();
+export function createSystemResolver(_oauth: OAuthClient, deps: SystemDependencies = {}) {
   const now = deps.now ?? Date.now;
-  return async (env: NodeJS.ProcessEnv, signal: AbortSignal, forceRefresh = false): Promise<SystemToken | undefined> => {
+  // Keep the resolver signature compatible, but all reuse is access-only. The external
+  // CLI/IDE owns its refresh pair and must renew it itself; Pi cannot persist its rotation.
+  return async (env: NodeJS.ProcessEnv, signal: AbortSignal, forceRefresh = false, _accessOnly = true): Promise<SystemToken | undefined> => {
     signal.throwIfAborted();
     const envToken = env.CURSOR_ACCESS_TOKEN?.trim();
     if (envToken && !forceRefresh) return { accessToken: envToken, source: "CURSOR_ACCESS_TOKEN" };
@@ -75,24 +71,9 @@ export function createSystemResolver(oauth: OAuthClient, deps: SystemDependencie
     if (!systemCredentialsAllowed(env.PI_CURSOR_SYSTEM_CREDENTIALS)) return undefined;
     const pairs = await abortable(Promise.all([(deps.keychain ?? keychain)(signal), (deps.ide ?? ide)(env, signal)]), signal);
     signal.throwIfAborted();
-    if (!forceRefresh) for (let i = 0; i < pairs.length; i++) {
+    for (let i = 0; i < pairs.length; i++) {
       const access = pairs[i]!.accessToken;
       if (access && now() < tokenExpiry(access, now())) return { accessToken: access, source: i ? "Cursor IDE (read-only)" : "Cursor CLI Keychain (read-only)" };
-    }
-    const seen = new Set<string>();
-    for (const pair of pairs) {
-      const refresh = pair.refreshToken;
-      if (!refresh || seen.has(refresh)) continue;
-      seen.add(refresh);
-      const hash = createHash("sha256").update(refresh).digest("hex");
-      if ((failures.get(hash) ?? 0) > now()) continue;
-      try {
-        const result = await oauth.refresh(refresh, signal);
-        signal.throwIfAborted(); failures.delete(hash);
-        return { accessToken: result.access, source: "Cursor system OAuth refresh (session only)" };
-      } catch {
-        signal.throwIfAborted(); failures.set(hash, now() + 600000);
-      }
     }
     return undefined;
   };

@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import { normalizeContext, type Api, type AssistantMessageEvent, type AssistantMessageEventStream, type Context, type Model, type OAuthCredentials } from "@earendil-works/pi-ai";
 import type { RustEngine, RustStream } from "@cursor-harness-provider/native";
 import { CursorAuth, type AuthDependencies } from "../../packages/pi/src/auth/index.js";
+import type { SystemResolver } from "../../packages/pi/src/auth/system.js";
 import { PiRustRuntime, type RuntimeDependencies } from "../../packages/pi/src/runtime.js";
 import { CURSOR_NATIVE_API } from "../../packages/pi/src/constants.js";
 
@@ -32,8 +33,9 @@ export class FakeStream implements RustStream {
 }
 export class FakeEngine implements RustEngine {
   readonly streams: RustStream[] = [];
-  readonly catalog = [{ id: "chat", name: "Fixture Chat", reasoning: true, supportsImages: true, contextWindow: 123000, maxTokens: 4000 },
-    { id: "chat-high", reasoning: true, supportsImages: true }, { id: "other", reasoning: false }];
+  readonly catalog = [{ id: "chat", name: "Fixture Chat", reasoning: true, supportsImages: true, contextWindow: 123000, maxTokens: 4000,
+    parameterized: { name: "chat", supportsImages: true, variants: [] } },
+    { id: "chat-high", reasoning: true, supportsImages: true, parameterized: { name: "chat-high", supportsImages: true, variants: [] } }, { id: "other", reasoning: false }];
   start = vi.fn(async (_request: string, _token: string): Promise<RustStream> => this.streams.shift() ?? new FakeStream());
   listModels = vi.fn(async (_token: string, _url?: string) => JSON.stringify(this.catalog));
   remove = vi.fn(async (_scope: string) => {});
@@ -42,7 +44,7 @@ export class FakeEngine implements RustEngine {
 export function fakeAuth(deps: Pick<AuthDependencies, "resolveAuth"> = {}) {
   const oauth = { login: vi.fn(async () => ({ access: token, refresh: "fixture-refresh", expires: 4102444800000 })),
     refresh: vi.fn(async (_refresh: string, _signal: AbortSignal): Promise<OAuthCredentials> => ({ access: jwt("fixture-a", "two"), refresh: "fixture-rotated", expires: 4102444800000 })) };
-  const system = vi.fn(async () => undefined);
+  const system = vi.fn<SystemResolver>().mockResolvedValue(undefined);
   const auth = new CursorAuth({ oauth, system, ...deps });
   return { auth, oauth, system };
 }

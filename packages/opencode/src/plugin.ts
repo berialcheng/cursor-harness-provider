@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Plugin, Model, Provider, Integration, Credential } from "@opencode/plugin";
-import { createNativeModel, PROVIDER_ID, PACKAGE_ID, SESSION_HEADER, WORKSPACE_HEADER, type NativeModelOptions } from "./model.js";
+import { createNativeModel, PROVIDER_ID, PACKAGE_ID, SESSION_HEADER, WORKSPACE_HEADER, REQUEST_KIND_HEADER, type NativeModelOptions } from "./model.js";
 import { createCursorAuthClient, type CursorCredentials } from "../../../vendor/pi-cursor/src/auth/oauth.js";
 import { createRustEngine } from "@cursor-harness-provider/native";
-interface CursorModel { id: string; name: string; reasoning: boolean; contextWindow: number; maxTokens: number; requestedModelId?: string; parameters?: unknown[]; requiresMaxMode?: boolean; supportsImages?: boolean; }
+interface CursorModel { id: string; name: string; reasoning: boolean; contextWindow: number; maxTokens: number; requestedModelId?: string; parameters?: unknown[]; requiresMaxMode?: boolean; supportsImages?: boolean; metadataOnly?: boolean; }
 
 const providerID = PROVIDER_ID as Provider.ID;
 const integrationID = PROVIDER_ID as Integration.ID;
@@ -11,6 +11,11 @@ const oauthMethodID = "cursor-pkce" as Credential.OAuth["methodID"];
 
 function oauthCredential(value: CursorCredentials): Credential.OAuth {
   return { type: "oauth", methodID: oauthMethodID, ...value };
+}
+
+/** Metadata-only rows need explicit parameter/mode routing and are not basic OpenCode models. */
+export function directCatalogModels(models: CursorModel[]): CursorModel[] {
+  return models.filter(model => !model.metadataOnly && !model.parameters?.length && !model.requiresMaxMode);
 }
 
 export function catalogModel(model: CursorModel): Model.Info {
@@ -35,10 +40,11 @@ const plugin: Plugin.Plugin = {
     // hook generation. A fresh setup must not reuse its disposed predecessor.
     const activation = randomUUID();
     const registrations: Array<{ dispose(): Promise<void> }> = [];
-    const sessions = new Set<string>();
     const auth = createCursorAuthClient();
     const workspace = ctx.location.directory ?? process.cwd();
-    let inventory: CursorModel[] = [{ id: "auto", name: "Auto (Cursor)", reasoning: false, contextWindow: 200000, maxTokens: 8192 }];
+    const autoInventory = (): CursorModel[] => [{ id: "auto", name: "Auto (Cursor)", reasoning: false, contextWindow: 200000, maxTokens: 8192 }];
+    let inventory = autoInventory();
+    let inventoryIdentity: string | undefined;
     let generation = 0;
     let stopped = false;
     let iterator: AsyncIterator<unknown> | undefined;
@@ -88,20 +94,39 @@ const plugin: Plugin.Plugin = {
     };
 
     const refreshCatalog = async () => {
+      if (stopped) return;
       const current = ++generation;
+      // Invalidate synchronously, before resolving a changed connection. Even
+      // same-account failures conservatively lose image/model capabilities.
+      const hadInventory = inventoryIdentity !== undefined;
+      inventoryIdentity = undefined;
+      inventory = autoInventory();
+      if (hadInventory) void ctx.provider.reload().catch(() => {});
       try {
         const token = await bindAccessToken();
+        const identity = token.scope;
         const signal = AbortSignal.any([lifecycle.signal, AbortSignal.timeout(20000)]);
-        const models = JSON.parse(await engine.listModels(await token({ signal }))) as CursorModel[];
+        signal.throwIfAborted();
+        if (current !== generation) return;
+        const access = await token({ signal });
+        signal.throwIfAborted();
+        if (current !== generation) return;
+        const models = JSON.parse(await engine.listModels(access)) as CursorModel[];
+        signal.throwIfAborted();
         if (stopped || current !== generation || !models.length) return;
+        // Verify the active connection without resolving another credential or
+        // retrying discovery under another account after rejection.
+        const active = await bindAccessToken();
+        if (stopped || current !== generation || active.scope !== identity) return;
         // Parameterized routes need a richer picker adapter; do not silently
         // advertise a route that would lose its model parameters.
-        inventory = models.filter(m => !m.parameters?.length && !m.requiresMaxMode);
-        if (!inventory.some(m => m.id === "auto")) inventory.unshift({ id: "auto", name: "Auto (Cursor)", reasoning: false, contextWindow: 200000, maxTokens: 8192 });
+        inventory = directCatalogModels(models);
+        if (!inventory.some(m => m.id === "auto")) inventory.unshift(autoInventory()[0]!);
+        inventoryIdentity = identity;
         await ctx.provider.reload();
       } catch {
-        // Discovery is optional and off the startup path. Never print an auth
-        // exception or an upstream payload (which may contain credentials).
+        // The current generation is already conservative Auto. A late failure
+        // must not erase a newer account's successful catalog. Never log auth.
       }
     };
 
@@ -112,8 +137,7 @@ const plugin: Plugin.Plugin = {
         if (event.model.providerID !== providerID || event.package !== PACKAGE_ID) return;
         event.sdk = { languageModel(modelId: string) {
           return createNativeModel({ modelId, workspace, bindAccessToken, engine,
-            getAccessToken: async options => (await bindAccessToken())(options),
-            onSession: id => sessions.add(id) });
+            getAccessToken: async options => (await bindAccessToken())(options) });
         } };
       }, { providerID }));
       await track(ctx.aisdk.hook("language", event => {
@@ -139,6 +163,7 @@ const plugin: Plugin.Plugin = {
         editor.method.update({ integrationID, method: { type: "env", names: ["CURSOR_ACCESS_TOKEN"] } });
       }));
       await track(ctx.provider.transform(editor => {
+        if (stopped) return;
         editor.add({ info: { id: providerID, name: "Cursor Native (Rust)", activation: "enabled", integrationID, package: "aisdk:" + PACKAGE_ID, settings: { cursorNativeActivation: activation } }, models: inventory.map(catalogModel) });
       }));
       // Rust already applies bounded safe recovery. Do not multiply it by
@@ -147,7 +172,13 @@ const plugin: Plugin.Plugin = {
       await track(ctx.session.hook("model.request", async event => {
         if (event.model.providerID !== providerID) return;
         const info = await ctx.session.get({ sessionID: event.sessionID });
-        event.headers[SESSION_HEADER] = event.sessionID + ":" + event.kind;
+        // The request hook has no tools/prompt fields in 2.2.5. generate's
+        // actual handoff lifetime is therefore decided by the model adapter.
+        for (const key of Object.keys(event.headers)) {
+          if ([SESSION_HEADER, REQUEST_KIND_HEADER, WORKSPACE_HEADER].includes(key.toLowerCase())) delete event.headers[key];
+        }
+        event.headers[REQUEST_KIND_HEADER] = event.kind;
+        if (event.kind === "primary" || event.kind === "generate") event.headers[SESSION_HEADER] = event.sessionID + ":" + event.kind;
         event.headers[WORKSPACE_HEADER] = encodeURIComponent(info.location.directory ?? workspace);
       }, { providerID }));
       // Startup replays registered transforms after setup. Reloading integration
@@ -159,8 +190,8 @@ const plugin: Plugin.Plugin = {
           while (!stopped) {
             const event = await iterator!.next();
             if (event.done || stopped) return;
-            const value = event.value as { type?: string };
-            if (value.type === "credential.updated" || value.type === "credential.switched") void refreshCatalog();
+            const value = event.value as { type?: string; data?: { integrationID?: string } };
+            if (value.type === "credential.updated" || (value.type === "credential.switched" && (!value.data?.integrationID || value.data.integrationID === integrationID))) void refreshCatalog();
           }
         })().catch(() => {});
       }

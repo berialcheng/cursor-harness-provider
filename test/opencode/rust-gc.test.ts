@@ -19,13 +19,14 @@ describe("Rust Node-API rejected-promise lifetime", () => {
       server.listen(0,'127.0.0.1'); await once(server,'listening');
       const url='http://127.0.0.1:'+server.address().port;
       try {
-        for(const mode of ['start','remove','listModels']){
+        for(const mode of ['start','remove','listModels','maintainCache']){
           let e=new binding.NativeEngine();
           refs.push(new WeakRef(e));
           let failed=false;
           try {
             if(mode==='start')await e.start('{}','fixture');
             else if(mode==='remove')await e.remove('invalid');
+            else if(mode==='maintainCache')await e.maintainCache('f'.repeat(64),false);
             else await e.listModels('',url);
           }catch{failed=true;}
           if(!failed)throw new Error('Expected rejected native method');
@@ -49,6 +50,6 @@ describe("Rust Node-API rejected-promise lifetime", () => {
     const result = await run(process.execPath, ["--expose-gc", "--input-type=module", "-e", code, nativeBindingPath()], {
       timeout: 15000, maxBuffer: 1024 * 1024,
     });
-    expect(JSON.parse(result.stdout)).toEqual({ alive: 0, receivers: 4 });
+    expect(JSON.parse(result.stdout)).toEqual({ alive: 0, receivers: 5 });
   }, 20000);
 });

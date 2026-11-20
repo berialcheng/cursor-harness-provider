@@ -11,10 +11,10 @@ export interface OAuthDependencies {
   pkce?: () => { verifier: string; challenge: string; uuid: string };
   now?: () => number;
 }
-export function tokenExpiry(token: string, now = Date.now()): number {
+export function tokenExpiry(token: string, now = Date.now(), skewMs = 300000): number {
   try {
     const value: unknown = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
-    if (isRecord(value) && typeof value.exp === "number" && Number.isFinite(value.exp)) return value.exp * 1000 - 300000;
+    if (isRecord(value) && typeof value.exp === "number" && Number.isFinite(value.exp)) return value.exp * 1000 - skewMs;
   } catch { /* opaque access token */ }
   return now + 3600000;
 }
@@ -30,6 +30,38 @@ function tokens(value: unknown): { access: string; refresh?: string } {
   if (!isRecord(value) || typeof value.accessToken !== "string" || !value.accessToken.trim() ||
       (value.refreshToken !== undefined && typeof value.refreshToken !== "string")) throw new Error("Cursor returned an invalid OAuth token response");
   return { access: value.accessToken, refresh: typeof value.refreshToken === "string" ? value.refreshToken : undefined };
+}
+const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
+/** Read a bounded body; JSON/UTF-8/reader errors must never echo authentication payloads. */
+async function tokenResponse(response: Response, signal: AbortSignal): Promise<{ access: string; refresh?: string }> {
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(15000)]);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    signal.throwIfAborted();
+    if (!response.body) throw new Error("Missing token response");
+    reader = response.body.getReader();
+    const declared = response.headers.get("content-length");
+    if (declared && /^\d+$/.test(declared) && Number(declared) > MAX_TOKEN_RESPONSE_BYTES) throw new Error("Token response byte limit");
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    let text = "", bytes = 0, chunks = 0;
+    while (true) {
+      const next = await abortable(reader.read(), deadline);
+      if (next.done) break;
+      bytes += next.value.byteLength;
+      if (++chunks > 4096 || bytes > MAX_TOKEN_RESPONSE_BYTES) throw new Error("Token response byte/chunk limit");
+      text += decoder.decode(next.value, { stream: true });
+    }
+    return tokens(JSON.parse(text + decoder.decode()) as unknown);
+  } catch {
+    signal.throwIfAborted(); // Keep caller cancellation distinct from malformed authentication data.
+    throw new Error(deadline.aborted ? "Cursor OAuth token response timed out; run /login cursor"
+      : "Cursor returned an invalid or oversized OAuth token response; run /login cursor");
+  } finally {
+    if (reader) {
+      try { void reader.cancel().catch(() => {}); } catch { /* A completed/aborted reader may already be closed. */ }
+      try { reader.releaseLock(); } catch { /* Do not replace the sanitized error during teardown. */ }
+    }
+  }
 }
 export function createOAuthClient(deps: OAuthDependencies = {}) {
   const now = deps.now ?? Date.now;
@@ -57,7 +89,7 @@ export function createOAuthClient(deps: OAuthDependencies = {}) {
           const response = await request(`https://api2.cursor.sh/auth/poll?${poll}`, {}, signal);
           if (response.status === 404) { errors = 0; delay = Math.min(delay * 1.2, 10000); continue; }
           if (!response.ok) throw new Error(`Cursor authentication polling failed (HTTP ${response.status})`);
-          const pair = tokens(await abortable(response.json(), signal));
+          const pair = await tokenResponse(response, signal);
           if (!pair.refresh) throw new Error("Cursor returned no OAuth refresh token");
           return { access: pair.access, refresh: pair.refresh, expires: tokenExpiry(pair.access, now()) };
         } catch {
@@ -74,7 +106,7 @@ export function createOAuthClient(deps: OAuthDependencies = {}) {
       }, signal);
       // Never include a response body or a credential in an error.
       if (!response.ok) throw new Error(`Cursor OAuth refresh failed (HTTP ${response.status}); run /login cursor`);
-      const pair = tokens(await abortable(response.json(), signal));
+      const pair = await tokenResponse(response, signal);
       return { access: pair.access, refresh: pair.refresh || refresh, expires: tokenExpiry(pair.access, now()) };
     },
   };

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { OAuthLoginCallbacks } from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore, InMemoryModelsStore, type OAuthLoginCallbacks } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { CursorAuth } from "../../packages/pi/src/auth/index.js";
 import { createOAuthClient, tokenExpiry } from "../../packages/pi/src/auth/oauth.js";
 import { createSystemResolver, systemCredentialsAllowed, windowsUsernameFromEnv } from "../../packages/pi/src/auth/system.js";
@@ -47,6 +48,37 @@ describe("OAuth and credential boundaries (fixtures only)", () => {
     expect(keychain).not.toHaveBeenCalled(); expect(ide).not.toHaveBeenCalled();
     expect(systemCredentialsAllowed(undefined)).toBe(true); expect(systemCredentialsAllowed(" allow ")).toBe(true);
   });
+  it("imports the actual access-token expiry, not a TTL equal to Pi's five-minute refresh margin", async () => {
+    const { auth, system, oauth } = fakeAuth(); system.mockResolvedValue({ accessToken: token, source: "fixture OS" });
+    const cb = callbacks(); cb.onSelect = vi.fn(async () => "system");
+    const imported = await auth.login(cb, { PI_CURSOR_SYSTEM_CREDENTIALS: "1" });
+    expect(imported).toMatchObject({ refresh: "", cursorNativeSystem: true, expires: 4102444800000 });
+    const credentials = new InMemoryCredentialStore();
+    await credentials.modify("cursor", async () => ({ ...imported, type: "oauth" }));
+    const runtime = await ModelRuntime.create({ credentials, modelsStore: new InMemoryModelsStore(), modelsPath: null, refreshOnCreate: false });
+    runtime.registerProvider("cursor", { api: "cursor-native-rust", baseUrl: "https://fixture.invalid", models: [], oauth: {
+      name: "Fixture", login: c => auth.login(c, { PI_CURSOR_SYSTEM_CREDENTIALS: "1" }),
+      refreshToken: (c, s) => auth.refreshCredential(c, s, { PI_CURSOR_SYSTEM_CREDENTIALS: "1" }), getApiKey: c => auth.remember(c),
+    } });
+    await Promise.all(Array.from({ length: 4 }, () => runtime.getAuth("cursor")));
+    expect(system).toHaveBeenCalledOnce(); expect(oauth.refresh).not.toHaveBeenCalled();
+    // Even expired imports are re-read through Pi's serialized credential transaction.
+    await credentials.modify("cursor", async c => ({ ...c!, expires: 0 }));
+    system.mockClear();
+    await Promise.all(Array.from({ length: 4 }, () => runtime.getAuth("cursor")));
+    expect(system).toHaveBeenCalledOnce(); expect(oauth.refresh).not.toHaveBeenCalled();
+    expect(system.mock.calls[0]?.slice(2)).toEqual([false, true]); // access-only, no forceRefresh/shadow OS rotation
+  });
+  it("rejects a near-expiry imported token and respects system opt-out on stored imports", async () => {
+    const { auth, system, oauth } = fakeAuth();
+    const near = "eyJhbGciOiJub25lIn0." + Buffer.from(JSON.stringify({ sub: "fixture-a", exp: Math.floor(Date.now() / 1000) + 240 })).toString("base64url") + ".fixture";
+    system.mockResolvedValue({ accessToken: near, source: "fixture OS" });
+    const cb = callbacks(); cb.onSelect = vi.fn(async () => "system");
+    await expect(auth.login(cb, { PI_CURSOR_SYSTEM_CREDENTIALS: "1" })).rejects.toThrow(/expires too soon/);
+    system.mockClear();
+    await expect(auth.refreshCredential({ access: token, refresh: "", expires: 0, cursorNativeSystem: true }, new AbortController().signal, { PI_CURSOR_SYSTEM_CREDENTIALS: "0" })).rejects.toThrow(/disabled/);
+    expect(system).not.toHaveBeenCalled(); expect(oauth.refresh).not.toHaveBeenCalled();
+  });
   it("reads only injected sources, preferring any usable local token before stale-token refresh", async () => {
     const { oauth } = fakeAuth(), keychain = vi.fn(async () => ({ refreshToken: "stale-cli" })), ide = vi.fn(async () => ({ accessToken: token }));
     const resolver = createSystemResolver(oauth, { keychain, ide });
@@ -55,12 +87,30 @@ describe("OAuth and credential boundaries (fixtures only)", () => {
     expect(windowsUsernameFromEnv({ USERPROFILE: "C:\\Users\\fixture" })).toBe("fixture");
     expect(windowsUsernameFromEnv({ USERNAME: "../sibling" })).toBeUndefined();
   });
-  it("backoffs identical failing system refreshes in-memory without a disk credential/cache write", async () => {
-    const { oauth } = fakeAuth(); oauth.refresh.mockRejectedValue(new Error("fixture refresh failed"));
-    const pair = async () => ({ refreshToken: "same-stale-token" });
+  it("does not shadow-rotate an expired CLI/IDE pair when Pi imports or rechecks system credentials", async () => {
+    const { oauth } = fakeAuth();
+    const resolver = createSystemResolver(oauth, { keychain: async () => ({ refreshToken: "OS-owned-refresh" }), ide: async () => ({}) });
+    const auth = new CursorAuth({ oauth, system: resolver });
+    const cb = callbacks(); cb.onSelect = vi.fn(async () => "system");
+    await expect(auth.login(cb, { PI_CURSOR_SYSTEM_CREDENTIALS: "1" })).rejects.toThrow(/No permitted/);
+    await expect(auth.refreshCredential({ access: token, refresh: "", expires: 0, cursorNativeSystem: true }, new AbortController().signal, { PI_CURSOR_SYSTEM_CREDENTIALS: "1" })).rejects.toThrow(/cannot refresh/);
+    expect(oauth.refresh).not.toHaveBeenCalled();
+  });
+  it("never rotates an external refresh pair, including legacy binding and rejected-token refresh", async () => {
+    const { oauth } = fakeAuth();
+    const pair = async () => ({ refreshToken: "OS-owned-refresh" });
     const resolver = createSystemResolver(oauth, { keychain: pair, ide: pair });
-    await resolver({}, new AbortController().signal); await resolver({}, new AbortController().signal);
-    expect(oauth.refresh).toHaveBeenCalledOnce();
+    const auth = new CursorAuth({ oauth, system: resolver });
+    const signal = new AbortController().signal;
+    await expect(auth.bind(undefined, {}, signal)).rejects.toThrow(/No Cursor access token/);
+    await expect(resolver({}, signal, true, false)).resolves.toBeUndefined();
+    let current = token;
+    const readOnly = createSystemResolver(oauth, { keychain: async () => ({ accessToken: current, refreshToken: "OS-owned-refresh" }), ide: async () => ({}) });
+    const bound = await new CursorAuth({ oauth, system: readOnly }).bind(undefined, {}, signal);
+    await expect(bound.refresh(signal)).rejects.toThrow(/same rejected/);
+    current = jwt("fixture-a", "renewed-by-external-owner");
+    await expect(bound.refresh(signal)).resolves.toBe(current);
+    expect(oauth.refresh).not.toHaveBeenCalled();
   });
   it("does not leak raw failed OAuth response bodies", async () => {
     const client = createOAuthClient({ fetch: vi.fn<typeof fetch>().mockResolvedValue(new Response("Bearer fixture-sensitive-payload", { status: 401 })) });
@@ -70,7 +120,8 @@ describe("OAuth and credential boundaries (fixtures only)", () => {
   it("keeps the host OAuth callback raw, returning rotating pairs under Pi's storage transaction", async () => {
     const { auth, oauth, system } = fakeAuth(), signal = new AbortController().signal;
     const pair = await auth.refreshCredential({ access: token, refresh: "fixture-refresh", expires: 0 }, signal, env);
-    expect(oauth.refresh).toHaveBeenCalledExactlyOnceWith("fixture-refresh", signal);
+    expect(oauth.refresh).toHaveBeenCalledExactlyOnceWith("fixture-refresh", expect.any(AbortSignal));
+    expect(oauth.refresh.mock.calls[0]![1].aborted).toBe(false);
     expect(pair).toMatchObject({ access: jwt("fixture-a", "two"), refresh: "fixture-rotated" });
     expect(system).not.toHaveBeenCalled();
   });

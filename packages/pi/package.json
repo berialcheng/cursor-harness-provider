@@ -28,11 +28,11 @@
   },
   "pi": {
     "extensions": [
-      "./dist/index.js"
+      "./dist/extension.ts"
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "~1.4.0 || ~1.5.0",
-    "@earendil-works/pi-coding-agent": "~1.4.0 || ~1.5.0"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
   }
 }

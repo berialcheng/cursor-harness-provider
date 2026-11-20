@@ -21,6 +21,9 @@ describe("OpenCode transcript adapter", () => {
   });
   it("represents explicit inline images and never downloads remote/file URLs", () => {
     expect(inlineImage({ mediaType: "image/png", data: new Uint8Array([137, 80, 78, 71]) }).data).toBe("iVBORw==");
+    expect(inlineImage({ mediaType: "image/png", data: new Uint8Array([0, 137, 80, 78, 71, 0]).subarray(1, 5) }).data).toBe("iVBORw==");
+    for (const bytes of [new Uint8Array(0), new Uint8Array(5 * 1024 * 1024 + 1)]) expect(() => inlineImage({ mediaType: "image/png", data: bytes })).toThrow("maximum 5 MiB");
+    expect(inlineImage({ mediaType: "image/png", data: new Uint8Array(5 * 1024 * 1024) }).data).toHaveLength(Math.ceil(5 * 1024 * 1024 / 3) * 4);
     for (const url of ["https://example.test/image.png", "file:///etc/passwd"]) expect(() => inlineImage({ mediaType: "image/png", data: new URL(url) })).toThrow("will not fetch");
   });
   it("rejects unsupported media rather than silently dropping it", () => {

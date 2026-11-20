@@ -127,7 +127,9 @@ describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
     const relocatedRuntime = join(directory, "node_modules", "@cursor-harness-provider", "native");
     await mkdir(join(relocatedRuntime, "dist"), { recursive: true });
     await writeFile(join(relocatedRuntime, "package.json"), JSON.stringify(manifest));
-    await writeFile(join(relocatedRuntime, "dist", "index.js"), await readFile(new URL("dist/index.js", runtimePackage)));
+    for (const file of ["index.js", "lifecycle.js"]) {
+      await writeFile(join(relocatedRuntime, "dist", file), await readFile(new URL("dist/" + file, runtimePackage)));
+    }
     await writeFile(artifact, await readFile(new URL("dist/model.js", hostPackage)));
     const script = `const { createNativeModel } = await import(${JSON.stringify(pathToFileURL(artifact).href)});
       const { nativeBindingPath } = await import(${JSON.stringify(pathToFileURL(join(relocatedRuntime, "dist", "index.js")).href)});
@@ -162,7 +164,12 @@ describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
     const run = async (m = native, options = base) => expect((await generate(m, options)).content).toEqual([{ type: "text", text: "scope-ok" }]);
     await run();
     a.token = "fixture-account-a-2"; // Refreshing a token must NOT switch account scope.
-    await run();
+    // A real next turn includes the previous assistant. Resubmitting only the original
+    // user message is a history rewind and must now rotate the upstream conversation.
+    await run(native, { ...base, prompt: [...base.prompt,
+      { role: "assistant", content: [{ type: "text", text: "scope-ok" }] },
+      { role: "user", content: [{ type: "text", text: "scope probe after token refresh" }] },
+    ] });
     selected = b;
     await run();
     await run(createNativeModel({ ...config, modelId: "fixture-other-model" }));
@@ -180,7 +187,7 @@ describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
       [a.id, "auto", config.workspace, session], [a.id, "auto", config.workspace, session],
       [b.id, "auto", config.workspace, session], [b.id, "fixture-other-model", config.workspace, session],
       [b.id, "auto", otherWorkspace, session], [b.id, "auto", config.workspace, session + "-other"],
-    ].map(binding => createHash("sha256").update(JSON.stringify(["opencode", ...binding])).digest("hex"));
+    ].map(([account, modelId, workspace, logicalSession]) => createHash("sha256").update(JSON.stringify(["opencode", account, modelId, workspace, "primary", logicalSession])).digest("hex"));
     expect(scopes).toEqual(expected);
     const piScope = createHash("sha256").update(JSON.stringify(["pi", a.id, "auto", config.workspace, session])).digest("hex");
     expect(scopes).not.toContain(piScope);
