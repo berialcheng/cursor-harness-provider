@@ -15,7 +15,9 @@ const registry = "https://registry.npmjs.org/";
 const workflowPath = ".github/workflows/publish.yml";
 const kinds = ["native", "pi", "opencode"];
 const predicateType = "https://slsa.dev/provenance/v1";
-const reconciliationDelays = [0, 1000, 3000];
+// Bounded read-only reconciliation window after an ambiguous upload: the
+// packument/attestation may attach slowly; this never retries a write.
+const reconciliationDelays = [0, 1000, 3000, 6000, 10000, 15000];
 export const npmVersion = "11.21.0";
 const stable = value => typeof value === "string" && value.length <= 128 &&
   /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(value) &&
@@ -57,7 +59,7 @@ function assertContext(env, version) {
   }
   // Reject even empty/case-varied overrides. Node injection/TLS overrides could
   // also defeat the isolated CLI/public reader; neither is needed by this job.
-  if (Object.keys(env).some(key => /^(?:NPM_CONFIG_.*|NPM_.*TOKEN|NPM_AUTH|NODE_AUTH_TOKEN|NODE_OPTIONS|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED)$/i.test(key))) {
+  if (Object.keys(env).some(key => /^(?:NPM_CONFIG_.*|NPM_.*TOKEN|NPM_AUTH|NODE_AUTH_TOKEN|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED)$/i.test(key))) {
     throw new PublishReleaseError("Legacy token/configuration environment overrides are forbidden");
   }
 }

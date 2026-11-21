@@ -185,7 +185,7 @@ describe("direct OIDC release publication", () => {
     const g = fixture(); g.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = ""; g.env.ACTIONS_ID_TOKEN_REQUEST_URL = "";
     expect((await publishRelease(g.options, g)).outcome).toBe("published");
   });
-  it.each(["NPM_TOKEN", "npm_token", "NODE_AUTH_TOKEN", "node_auth_token", "NPM_AUTH_TOKEN", "NPM_CONFIG_REGISTRY", "npm_config_userconfig", "nPm_CoNfIg__authToken", "NPM_CONFIG_", "NODE_OPTIONS", "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS"])(
+  it.each(["NPM_TOKEN", "npm_token", "NODE_AUTH_TOKEN", "node_auth_token", "NPM_AUTH_TOKEN", "NPM_CONFIG_REGISTRY", "npm_config_userconfig", "nPm_CoNfIg__authToken", "NPM_CONFIG_", "NODE_OPTIONS", "NODE_PATH", "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS"])(
     "rejects even an empty legacy token/config/injection override: %s", async key => {
       const f = fixture(); f.env[key] = ""; expect((await failure(f)).message).toMatch(/overrides/);
       expect(f.execute).not.toHaveBeenCalled(); expect(f.readJSON).not.toHaveBeenCalled();
@@ -410,7 +410,7 @@ describe("direct OIDC release publication", () => {
       return f.baseReadJSON(url);
     });
     const error = await failure(f); expect(error.audit.outcome).toBe("uncertain"); expect(f.uploads).toEqual(["native"]);
-    expect(f.wait.mock.calls).toEqual([[1000], [3000]]); expect(f.execute).toHaveBeenCalledTimes(2);
+    expect(f.wait.mock.calls).toEqual([[1000], [3000], [6000], [10000], [15000]]); expect(f.execute).toHaveBeenCalledTimes(2);
   });
   it.each([true, false])("stops without retry/following packages when acceptance cannot be proved (nonzero=%s)", async nonzero => {
     const f = fixture(); f.execute.mockImplementation((_binary, args) => {
@@ -422,7 +422,7 @@ describe("direct OIDC release publication", () => {
     expect(error.message).toMatch(/outcome uncertain/); expect(error.audit.outcome).toBe("uncertain");
     expect(error.audit.completion).toBe(false); expect(error.audit.freshPublication).toBe(false);
     expect(error.audit.packages.map((item: any) => item.status)).toEqual(["uncertain", "not-attempted", "not-attempted"]);
-    expect(f.execute).toHaveBeenCalledTimes(2); expect(f.wait).toHaveBeenCalledTimes(2);
+    expect(f.execute).toHaveBeenCalledTimes(2); expect(f.wait).toHaveBeenCalledTimes(5);
     expect(JSON.stringify(error.audit)).not.toContain("private");
   });
   it("stops after an ambiguous upload with conflicting bytes/source, not even the next package", async () => {
@@ -439,7 +439,7 @@ describe("direct OIDC release publication", () => {
       return f.baseReadJSON(url);
     });
     const error = await failure(f); expect(error.audit.outcome).toBe("uncertain"); expect(f.uploads).toEqual(["native"]);
-    expect(f.wait).toHaveBeenCalledTimes(2);
+    expect(f.wait).toHaveBeenCalledTimes(5);
   });
 
   it.each(["0.3.2", "0.3.10", "0.10.0", "1.0.0", "0.4.0-rc.1"])("returns safe superseded without writing if any latest is ahead: %s", async latest => {
