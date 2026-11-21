@@ -1,85 +1,99 @@
-# Staged npm releases
+# Automatic npm releases
 
-Public package names are `@cursor-harness-provider/native`, `@cursor-harness-provider/pi` and `@cursor-harness-provider/opencode`. The root remains private. Provider/API/OAuth IDs and installed plugins are unrelated to npm package names and must not be changed by a release.
+Packages are `@cursor-harness-provider/native`, `/pi` and `/opencode`; the root remains private. npm names do not change host provider/API/OAuth identities. Publishing never switches an installed provider or reads host credentials.
 
-## Release model
+## Routine operation: push, not approve
 
-`publish.yml` builds matching native targets, checks source and actual installed tarballs, aggregates matching commit/run/attempt/lockfile parts, then executes the exact merged tarballs on all three hosts. A final **stage-only** job is available only for an explicit main-branch manual dispatch with `stage_npm=true` and an exact version input.
+The owner has authorized accepted distributable-code changes on this repository's `main` branch to trigger automatic coordinated versions and **direct OIDC npm publication** once the one-time migration is complete and repository variable `AUTOMATED_NPM_RELEASES` is exactly `true`. An unset/false variable disables automatic publication. Other branches do not authorize a release.
 
 ```text
-3 native builds + source/packed-host tests
-  -> aggregate matching binaries, metadata and complete target notices
-  -> verify merged native/Pi/OpenCode archives on all 3 native hosts
-  -> protected npm-release environment approval
-  -> OIDC npm stage publish: native, Pi, OpenCode
-  -> maintainer inspection and npm 2FA approval (native first)
+accepted main code change
+  -> auto-release.yml: plan version + changelog
+  -> one version-only commit and annotated vVERSION tag, atomic Git push
+  -> explicit dispatch of publish.yml AT that immutable tag
+  -> source/version/tag/main-ancestry gate
+  -> 3 native builds and tested single-target packages
+  -> aggregate matching source/run/attempt/locks/licenses/hashes
+  -> actual merged-tarball acceptance on all 3 supported hosts
+  -> OIDC npm publish: native, then Pi, then OpenCode
+  -> automatic public registry, cryptographic provenance and installation checks
 ```
 
-Pushes do not write to npm. No job runs direct `npm publish`, stage approval or unpublish. The staging job alone receives `id-token: write`; all other jobs remain `contents: read`. It uses GitHub-hosted Ubuntu, Node 22.22.0 and an isolated npm 11.21.0 CLI, no dependency/build cache, no persisted checkout credentials and no long-lived npm token or Secret. Workflow concurrency does not cancel active releases.
+There is no release PR, routine environment reviewer, npm login, staged candidate or per-version 2FA prompt. Account 2FA stays enabled. Configuring trust/security permissions or recovering an account can still require the owner; an agent never supplies biometric/key presence, recovery codes or stored OTPs.
 
-The publisher revalidates the same-run bundle against source, version, coverage, license and binary hashes before any upload, and rechecks every archive before each upload. It rejects foreign commits/runs/attempts, non-main/non-dispatch contexts and legacy token/config environment overrides. Ambiguous/nonzero uploads stop immediately without retries or following packages; reconcile the npm staging queue before another dispatch. Three-package releases are not transactional and versions cannot be overwritten.
+**Trust boundary:** after enabling this policy, accepted main code and its release workflows have publication authority. Removing human release reviews changes that boundary; it is not identical to the former stage-only maximum-security policy. Protect main/workflow changes and immutable tags accordingly.
 
-## One-time setup for new package names
+## One-time migration
 
-Trusted Publishers are configured on existing npm package entries. The separate `npm-bootstrap.yml` workflow establishes those names using a **one-time, scope-limited stage-only granular access token**. All registry writes still run in GitHub Actions against the official registry. This workflow no longer runs interactive `npm login`; it never asks a running job to wait for a browser login.
+Do not repeat namespace initialization: all three real `0.3.0` packages already exist and were publicly verified. No new npm/PAT token, server or bootstrap is needed.
 
-### One-time credential setup (maintainer only)
+1. Qualify the new source locally and in current CI while the automation variable is disabled. A `publish.yml` dispatch on `main` with the exact current source version and `publish_npm=false` runs read-only source/build/package gates. It cannot deploy to the npm environment or publish. The standalone public verifier can also check the already-public `0.3.0` with the new verification code.
+2. Keep each existing npm Trusted Publisher's owner/repository/workflow/environment identity below. Enable **Allow npm publish**; standalone `npm dist-tag` management is not needed by this workflow and should remain disabled. These optional-action changes do not require bootstrapping a package again.
+3. In GitHub environment `npm-release`, remove the recurring required-reviewer rule, retain deployment-ref restrictions, and allow only the intended `v*` release tags. No npm token Secret is used. Configure tag rules to prevent updates/deletions; do not retag an existing version.
+4. Keep npm account2FA enabled. The recommended package policy disallows traditional bypass tokens while allowing OIDC. Its setup may require an additional real owner security-key confirmation; do not bypass that check or claim it completed before a fresh settings readback.
+5. Set repository Actions variable `AUTOMATED_NPM_RELEASES=true`. For the initial controlled acceptance, dispatch `auto-release.yml` on `main` with `force_release=true`, `preview=false`; version `0.3.1` is chosen by the coordinator, not manually edited. Subsequent eligible main pushes require no release dispatch or approval.
+6. Confirm the first direct publication and automatic public verification actually succeed. A tag or successful build alone is not a completed release. Keep existing local Pi/OpenCode providers unchanged unless separately authorized.
 
-1. On npmjs.com, create a granular access token named for this bootstrap attempt. In **Packages and scopes**, select **Read and write (stage only)** and **Only select packages and scopes**, restricted to `@cursor-harness-provider`. Do not select All Packages. If the scope is unavailable, stop rather than silently broadening access.
-2. Leave **Bypass two-factor authentication** disabled and **Organizations** access at **No access**. Organization management permissions do not grant package publishing rights. Choose the shortest permitted expiration (npm requires at least one day), and revoke it immediately after use rather than waiting for expiry.
-3. Complete any npm security-key verification yourself. Copy the token directly into GitHub **Settings → Environments → npm-release → Environment secrets**, named **NPM_BOOTSTRAP_TOKEN**. Do not send the value to an agent/chat, commit it, put it in workflow inputs, or expose it in screenshots/logs. The agent must not read the generated token or the Secret field.
-
-Stage-only prevents direct publication of new versions, but is **not a general-purpose upload-only security boundary**: npm also permits deprecating versions and moving dist-tags with such a token. Review the scope/permissions before saving it. The script verifies the account with `npm whoami`; it cannot establish the token's server-side permissions from a Secret name. Never substitute a bypass-2FA or broadly scoped token.
-
-### Run the bootstrap and retire its credential
-
-1. Dispatch **one-time npm package bootstrap** on main, confirmation `create-three-public-package-placeholders`, then personally approve the protected `npm-release` environment deployment.
-2. Only the metadata staging step receives the Secret, mapped to `NODE_AUTH_TOKEN`. CLI installation, other jobs, and the real OIDC release never receive it. The script creates private, distinct npm config files containing only the literal `${NODE_AUTH_TOKEN}` reference; npm handles interpolation. No token value is written into command arguments or config files by the script, and no auth/cache artifact is uploaded.
-3. The job requires npm 11.21.0 and owner `berialcheng`, checks package absence, then stages metadata-only **0.0.0-bootstrap** candidates. npm creates public **0.0.0-stage** placeholders. Neither is a usable provider release. Existing package entries are not modified.
-4. Inspect the job result and npm staging queue. Ambiguous upload results stop immediately without retries or following packages; reconcile npm before any new dispatch.
-5. **After every attempt, including failures, revoke the bootstrap token on npm and delete the GitHub environment Secret NPM_BOOTSTRAP_TOKEN.** The job attempts local cleanup even on failure, but removing runner files or deleting the GitHub Secret does not revoke the npm token. It does not attempt `npm logout` or claim server-side revocation. If interrupted, perform the same credential cleanup before proceeding.
-6. **Never approve the 0.0.0-bootstrap candidates, and do not reject them yet.** Keep them pending while configuring Trusted Publishers and releasing the real version. Rejecting the only candidate of a new package can remove the package and its trust configuration, with a name-reuse cooldown. Only after the real **0.3.0** is publicly published and verified may a maintainer assess rejecting the bootstrap candidates. There is no automatic reject or unpublish.
-
-Only this explicit setup workflow may receive the one-time token. It has no OIDC permission and its script permits only fixed-name metadata staging, not real artifacts, direct publishing, approval, rejection or unpublishing. Formal releases still reject traditional token/config overrides and require all same-run OIDC release gates. A successful bootstrap is namespace setup, not a successful 0.3.0 release.
-
-## GitHub and npm configuration
-
-Configure a GitHub environment named `npm-release`, with reviewer `berialcheng`, administrator bypass disabled, and only the **main branch** allowed (no tag patterns). Sole-owner self-review prevention must remain disabled so the human who dispatches can approve; this is not permission for an agent to bypass review. No npm token Secret is used for formal OIDC releases. The temporary `NPM_BOOTSTRAP_TOKEN` environment Secret is the one-time exception above and must be removed after that attempt.
-
-For each package, configure its Trusted Publisher:
-
-| Field | Value |
+| npm Trusted Publisher field | Value |
 | --- | --- |
 | Provider | GitHub Actions |
-| GitHub organization/user | berialcheng |
+| Organization/user | berialcheng |
 | Repository | cursor-harness-provider |
 | Workflow filename | publish.yml |
 | Environment | npm-release |
-| Allowed actions | stage only; no direct publish or dist-tag management |
+| Allowed actions | npm publish (npm stage publish remains implicit); no standalone dist-tag action |
 
-The npm organization name is not the GitHub owner field. Newly configured publishers must complete the first successful publish within two days or expire; configure them only when ready. After validating OIDC, require 2FA and disallow traditional publishing tokens. GitHub/public-package OIDC automatically generates provenance; do not disable it for real release candidates. This is distinct from the metadata-only bootstrap, which is not approved or advertised as a release.
+Only `publish-npm` receives `id-token: write`. Version preparation alone receives narrowly scoped `contents: write` and `actions: write` through the temporary repository `GITHUB_TOKEN`; it neither reads its value nor persists credentials. Build/verification jobs use `contents: read`. No PAT or npm token is introduced.
 
-## Execute a real release
+## Versions and source identity
 
-1. Verify source/workspace/Cargo/native versions match and choose the intended main commit.
-2. Dispatch `publish.yml` on main with `stage_npm=true` and version `0.3.0` (or the exact intentionally updated source version).
-3. Require every same-run native build, aggregate and merged-tarball host gate to succeed, then review the protected environment deployment.
-4. Inspect the three staged versions, provenance and integrity against the run's manifest/audit. The workflow does not automatically approve anything.
-5. Approve **native first** with maintainer 2FA, then Pi and OpenCode. Never approve a bootstrap candidate.
-6. Verify published versions, dependencies, registry integrity, provenance and installation from registry tarballs. A staged candidate or public placeholder is not a completed release. Do not switch an installed plugin without separate authorization.
+This first automation phase retains a unified root/native/Pi/OpenCode/Cargo version. Exact adapter-to-native dependency pins remain. The coordinator updates only its explicit allowlist of version manifests, two local Cargo.lock records, workspace npm-lock scalars, changelog and locked-license source hashes in one commit. Third-party lock records, notices and target dependency sets must remain byte-equivalent during a version-only change. A dependency-graph/license change must be reviewed and regenerated separately, not silently legalized by the version bot.
 
-## Artifact and license gates
+- Applicable fixes/refactors/build changes default to a patch.
+- `feat` selects a minor; breaking changes select a minor while0.x, a major at1.x+.
+- Docs/tests/.github-only changes do not automatically publish; ambiguous mixed changes are conservatively classified.
+- Versions are canonical stable SemVer for now. No automatic prerelease channel is implied.
+- An unused candidate version/tag may be skipped, never overwritten or reassigned.
+- The Rust binary still embeds its real Cargo version. The native package, manifest and binary must agree; an old binary is never relabeled as a new version.
 
-`release.config.json` is the platform policy: darwin-arm64/aarch64-apple-darwin on macos-15, darwin-x64/x86_64-apple-darwin on macos-15-intel, and linux-x64-gnu/x86_64-unknown-linux-gnu on Ubuntu 22.04. Initial floors are macOS 15 and x64 GNU/glibc 2.35. Windows, Linux arm64 and musl are not advertised. Missing artifacts fail rather than downloading, compiling or using CLI/JS inference.
+The version commit is created **before** building. The publisher tag, actual checkout, `GITHUB_SHA`, artifact identity and signed provenance therefore describe the same source. Bot `GITHUB_TOKEN` pushes do not normally start another workflow, so the coordinator explicitly dispatches `publish.yml` at its version tag. It does not fake `GITHUB_SHA`, build a dirty version tree or add a PAT to work around GitHub event semantics.
 
-The root/upstream license texts are preserved. `licenses/locked-target-dependencies.json` is a source-controlled reference derived from locked, offline target Cargo metadata and bound to Cargo.lock/workspace-manifest hashes. Each native build independently checks membership/classification; package preparation/verification additionally requires each dependency's exact original notice paths and content hashes. A self-consistent supplied manifest is not proof of completeness. Regenerate with `npm run licenses:lock` after collecting/reviewing original notices from exact locked crates under `licenses/rust/<name>-<version>/`.
+`auto-release.yml` also exposes `preview=true` for explicit testing: this creates a real version commit/tag but dispatches verification without npm writes. Its annotation records that publication mode. A preview tag is not repurposed for a public release; use the main-branch read-only dispatch for migration qualification instead of consuming the intended first public version.
 
-Each target retains its own full inventory and notices under the merged package's `licenses/targets/<platform>/`; files are not flattened or silently overwritten. The conservative normal closure includes proc macros/codegen and is not an exact runtime-link SBOM. The nine documented protoc-bin-vendored build-tool text gaps remain explicit exceptions, not distributed compiler binaries. This is not legal-compliance certification.
+Native/adapter independent versions are a separate future optimization, not implemented by merely relaxing checks. Reusing an unchanged published native package would require its unchanged version, exact registry digest/provenance and current adapter-pair acceptance; it must not be presented as a new same-run native build.
 
-`npm run check` includes typechecking, Rust formatting/clippy/tests, builds, JS tests and real tarball acceptance. Actual tarballs are installed offline with scripts/peer auto-install disabled, verified for exact licenses/hashes, loaded with no Rust executable available, typechecked by a standalone consumer, then tested in six actual Pi/OpenCode host cases with local mock HTTP/2. Only provisioned host SDK peers are linked, not project workspaces. This is not live Cursor-service certification.
+## Gates and performance
 
-Build helpers in `pack-utils.mjs` permit only offline pack/install. Archive extraction rejects traversal, links/devices, duplicate/private paths and oversized data; the entire expanded TAR (including PAX/GNU headers) is byte-bounded before parsing with a 30-second subprocess deadline. Release export/aggregate/verify binds Git commit, both lock hashes, run and attempt. `--local` evidence is marked local-only and forbidden in CI. Existing output directories are not overwritten.
+`release.config.json` defines macos-15 ARM, macos-15-intel and Ubuntu22.04 x64 GNU targets, with initial macOS15/glibc2.35 floors. Windows, Linux arm64 and musl are not advertised. Missing artifacts fail instead of compiling/downloading a runtime or using CLI/JS inference.
 
-The merged CI artifact contains exactly native.tgz, pi.tgz, opencode.tgz and release-manifest.json, retained seven days. A successful artifact run does not itself publish anything. Historical source preflight 41992048529 for commit 2a9d175 passed all seven jobs; publishing-workflow changes require their own current-run gates.
+`npm run check:release` retains type checks, Rust fmt/clippy/tests, actual builds and JS/host tests. `release:export` then tests and exports the exact single-target tarballs once, avoiding a duplicate `test:packages` immediately beforehand. The final merged archives are still installed and executed on all three native platforms. Ordinary `npm run check` retains its own packed-package acceptance for local/PR checks.
 
-References: [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/), [staged publishing](https://docs.npmjs.com/staged-publishing), [stage-only token capabilities](https://docs.npmjs.com/about-access-tokens/#about-stage-only-tokens), [token creation](https://docs.npmjs.com/creating-and-viewing-access-tokens/), [provenance](https://docs.npmjs.com/generating-provenance-statements). The bootstrap cleanup guard is also documented by [pi-webtasks](https://github.com/JangMan-J/pi-webtasks/blob/9b620ed58e237e29430a1d5c4575a107007e913c/scripts/npm-bootstrap.sh); do not copy that project's direct-publish or unpublish steps into this stage-only workflow.
+The lightweight `check.yml` classifier delegates only unambiguous automatic main distribution pushes to the authoritative three-target release pipeline. PRs, non-main/manual/disabled-automation or uncertain classifications retain the original checks. Existing non-publishing Rust caches remain separate; release builds do not restore a compiled target cache. npm download caching is permitted; it does not replace source/native version checks or actual host acceptance.
+
+The preparation and publication queues use GitHub's `queue: max` with `cancel-in-progress:false` (up to100 pending entries). Read-only release checks use a separate queue so they cannot replace a pending publisher. GitHub ordering is based on when work starts waiting, not necessarily dispatch order; publication also checks latest to prevent rollback. Queue overflow and service/account failures are exceptional failures, not reasons to silently publish unverified code.
+
+## Registry writes, reconciliation and verification
+
+Direct publication requires the expected repository and exact `publish.yml` workflow at `refs/tags/vVERSION`, the enabled switch, current source/run/attempt/lock binding, Node22.22.0/npm11.21.0 and OIDC endpoints. Empty/case-varied traditional token/config or Node/TLS injection overrides are rejected. Config files and caches are private, separate and temporary. No raw child output, auth endpoint values or environment dumps are exposed.
+
+Before every upload, all archive hashes are rechecked. Public version/latest lookups must be known; only explicit404 means absent. Existing versions can be reused only when exact bytes and source/provenance match. A newer latest is never moved backward. A nonzero upload may already have been accepted: bounded registry reads reconcile it, without another upload or blindly continuing. Irreconcilable/foreign data stops the release and signals failure. Three npm packages are **not a cross-package transaction**; already-published versions are not deleted to simulate rollback.
+
+Read-only post-publication reconciliation also runs after attempted/partial publisher failures. It derives expected bytes from the same-run verified bundle, checks every observed accepted package cryptographically, and reports missing/unknown versions honestly. Complete cohorts additionally require the actual isolated Pi/OpenCode host cases. Partial/absent cohorts are not successful releases.
+
+Public verification compares archive SHA256/SHA1/SRI, exact names/versions/native dependencies and installed lock entries. It checks source/ref/digest/producer claims from the **cryptographically verified attestation bundles returned by pinned npm's audit**, not only a separately fetched unsigned observation. Explicit per-package producer maps support genuine same-source partial-release reuse without pretending every package came from the current run. The standalone read-only verifier supports the same producer map, and has only the narrowly pinned historical0.3.0/main provenance exception.
+
+## License and archive integrity
+
+Root/upstream license texts are preserved. `licenses/locked-target-dependencies.json` is an independent locked Cargo reference bound to Cargo.lock/workspace manifests; each target verifies graph membership/classification and original notice paths/hashes. A self-consistent supplied inventory is not proof of completeness. Real dependency changes require reviewed notices and `npm run licenses:lock` before release.
+
+Merged notices remain under `licenses/targets/<platform>/`; they are not flattened. Normal closure conservatively includes proc macros/codegen, not an exact runtime-link SBOM. The nine disclosed protoc-bin-vendored build-tool text gaps remain exceptions, not distributed compiler binaries or legal-compliance certification.
+
+`pack-utils` permits only offline pack/install. Extraction rejects traversal, links/devices, duplicates/private paths and oversized input, including PAX/GNU expanded-byte budgets and subprocess deadlines. Local-only evidence cannot become CI release evidence. Same-run parts bind commit/run/attempt/locks and tested target coverage. The seven-day bundle artifact contains exactly the three tarballs plus release-manifest.json; a successful artifact run alone does not imply publication.
+
+## Historical bootstrap and manual staging
+
+The one-time stage-only bootstrap credential was revoked and `NPM_BOOTSTRAP_TOKEN` removed after namespace initialization. Do not create another token or repeat bootstrap for these existing packages. Never approve `0.0.0-bootstrap`. Its candidates remain pending; rejection/unpublish is not automatic, even though the real0.3.0 packages are now public and verified. Rejecting the sole candidate of a new package before a real release could remove its namespace/trust and trigger name cooldown; that historical safety rule remains relevant to any separately authorized future namespace setup.
+
+`stage-release.mjs` and its regression tests document the previous owner-approved staging flow; they are not the unattended publisher. Normal releases do not call `npm stage publish`, `npm stage approve`, `npm login` or `npm unpublish`. Account credentials, recovery codes and installed-provider state are never migrated by releasing.
+
+References: [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/), [staged publishing](https://docs.npmjs.com/staged-publishing), [GitHub token-trigger semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow), [GitHub concurrency queues](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).

@@ -10,11 +10,11 @@ Not affiliated with or endorsed by Cursor/Anysphere. Use only an account you are
 
 ## Status
 
-**0.3.0, experimental.** Current local qualification: macOS26.7.1 arm64, Node22.22.0, Rust1.99.1, Pi1.4.0/1.5.1 and OpenCode2.2.5/Bun1.3.13.
-This source migration was verified against local mock Cursor HTTP/2 in the real hosts. It is not a fresh live-service certification of every model or feature.
-The earlier single-host Rust implementation had live Auto text/tool smoke tests; do not confuse those with full dual-host acceptance.
-The earlier 2026-11-10 audit recorded 112 Rust / 377 JS tests. **Current operational hardening passed 126 Rust tests and 512 JS/host tests in 48 files**, plus offline-installed packed-host gates on Pi1.4.0 and Pi1.5.1. SDK1.5.1 additionally passed 121 injected-engine ownership/lifecycle tests. See [dated evidence](docs/VALIDATION.json) and [operations/rollback](docs/OPERATIONS.md). These are local mock-backed passes, not live-service, minimum-OS or fresh remote three-target certification.
-Source is hosted on [GitHub](https://github.com/berialcheng/cursor-harness-provider). See [Actions](https://github.com/berialcheng/cursor-harness-provider/actions) for current remote CI results; local validation is not proof of a successful remote run. Setup placeholders are not provider releases; see the registry and staged-release workflow for the current publication state.
+**Experimental.** The first public release, 0.3.0, passed 146 Rust and 515 JS/host tests, three native-platform builds and exact merged-tarball host gates in [its protected release run](https://github.com/berialcheng/cursor-harness-provider/actions/runs/44739122212). Its official-registry bytes, signatures, attestations and isolated Ubuntu dual-host installation also passed [post-publication verification](https://github.com/berialcheng/cursor-harness-provider/actions/runs/44746991557).
+
+Tests use mock Cursor HTTP/2 in real Pi/OpenCode hosts, not a fresh live-service certification of every model or feature. The older single-host Rust implementation had live Auto text/tool smoke tests; those are not full dual-host acceptance. Earlier Pi1.5.1 ownership/lifecycle and operational reports remain dated historical evidence, not qualifications of every later artifact. See [validation records](docs/VALIDATION.json) and [operations/rollback](docs/OPERATIONS.md).
+
+See [npm](https://www.npmjs.com/org/cursor-harness-provider) for public versions and [Actions](https://github.com/berialcheng/cursor-harness-provider/actions) for each exact source/run. A source checkout, tag, setup placeholder or successful build alone is not proof of completed publication. Automatic release setup and its fail-closed enable switch are documented in the [release guide](docs/PUBLISHING.md).
 
 ## Layout
 
@@ -29,7 +29,7 @@ test/reference/       # Earlier JS implementation, test oracles only
 licenses/             # Locked target-specific third-party notice inventory
 ```
 
-Planned public packages use `@cursor-harness-provider/native`, `/pi` and `/opencode`. The root workspace remains private. Host provider/OAuth identifiers are retained; Pi uses the distinct `cursor-native-rust` API without overriding the old API. npm package names are a separate layer.
+The public packages use `@cursor-harness-provider/native`, `/pi` and `/opencode`. The root workspace remains private. Host provider/OAuth identifiers are retained; Pi uses the distinct `cursor-native-rust` API without overriding the old API. npm package names are a separate layer.
 
 ## Build
 
@@ -97,7 +97,11 @@ No performance, quota, cache savings or billing superiority is claimed.
 
 ## Package releases
 
-The [release guide](docs/PUBLISHING.md) describes `publish.yml`: native-host builds, per-target license/binary aggregation and verification of the exact merged tarballs. Pushes are preflight-only; an explicit main-branch dispatch can stage the verified bundle through OIDC after protected-environment approval. npm maintainer 2FA approval is still required to make versions live. The separate one-time bootstrap workflow uses a temporary scope-limited stage-only token to create metadata setup candidates and public placeholders, never a usable provider release; it no longer waits for an interactive owner login in CI. The token must be revoked and its GitHub Secret removed after use. Never approve bootstrap candidates. Defer any rejection until a real version is publicly published and verified. Installed-plugin changes remain separately authorized.
+Once the one-time [automation setup](docs/PUBLISHING.md) is complete and `AUTOMATED_NPM_RELEASES=true`, accepted distributable-code changes on `main` authorize automatic coordinated versioning, changelog/tag creation, three-platform acceptance and **direct OIDC npm publication**. Normal releases have no release PR, GitHub reviewer, staged-package approval or npm login. Account 2FA stays enabled; initial trust/security changes may still require the owner. The switch defaults off until migration is qualified.
+
+Version preparation explicitly dispatches `publish.yml` at its immutable version tag; it does not rely on bot pushes triggering CI. Only the final publisher receives OIDC capability, after all source/run/attempt/lock/license/hash and actual-host gates pass. Official-registry signatures, signed provenance/source/producer identities and isolated installation are checked automatically afterward. Ambiguous uploads are reconciled by reads, never blind reuploads or overwrites. Installation switches remain separately authorized.
+
+The earlier one-time bootstrap is complete, its token revoked and Secret removed. Never recreate that credential, rerun initialization or approve the historical `0.0.0-bootstrap` candidates. There is no automatic unpublish or candidate rejection.
 
 ## Provenance
 
