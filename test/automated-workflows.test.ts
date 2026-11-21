@@ -275,7 +275,7 @@ describe("unattended release workflow contracts", () => {
     expect(condition(manual.if, { github: { repository, ref: tagRef } })).toBe(false);
     expect(condition(manual.if, { github: { repository: "foreign/repo", ref: "refs/heads/main" } })).toBe(false);
     expect(manual.permissions).toEqual({ contents: "read" });
-    expect(manual.env?.VERIFIER_COMMIT).toBe("${{ github.workflow_sha }}");
+    expect(manual.env?.VERIFIER_COMMIT).toBe("${{ github.sha }}");
     expect(manual.steps.find(value => value.uses?.startsWith("actions/checkout@"))?.with?.ref).toBe("${{ inputs.source_commit }}");
     expect(manual.steps.some(value => value.run?.includes('git show "$VERIFIER_COMMIT:scripts/verify-published.mjs"'))).toBe(true);
     for (const job of [workflows.publish.jobs["verify-published"], manual]) {

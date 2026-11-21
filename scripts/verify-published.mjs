@@ -255,9 +255,11 @@ function producerSelectors(request, kind) {
 }
 function verifyAttestationAudit(stdout, receipts, request, preflightBindings) {
   const audit = json(stdout, "verified attestation audit");
+  // Sanitized diagnostics: npm-fixed schema key names and counts only.
+  const shape = { keys: Object.keys(audit).sort(), invalid: audit.invalid?.length, missing: audit.missing?.length, verified: audit.verified?.length, receipts: receipts.length };
   requireThat(sameKeys(audit, ["invalid", "missing", "verified"]) && Array.isArray(audit.invalid) && audit.invalid.length === 0 &&
     Array.isArray(audit.missing) && audit.missing.length === 0 && Array.isArray(audit.verified) && receipts.length > 0 &&
-    audit.verified.length === receipts.length, "npm JSON must contain exactly the expected nonzero verified packages and no invalid/missing entries");
+    audit.verified.length === receipts.length, "npm JSON must contain exactly the expected nonzero verified packages and no invalid/missing entries; observed shape " + JSON.stringify(shape));
   const seen = new Set();
   for (const row of audit.verified) {
     requireThat(sameKeys(row, ["name", "version", "location", "registry", "attestations", "attestationBundles"]), "Invalid npm verified package row");

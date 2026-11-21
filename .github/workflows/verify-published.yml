@@ -38,7 +38,9 @@ jobs:
       SOURCE_COMMIT: ${{ inputs.source_commit }}
       EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
       EXPECTED_PRODUCERS: ${{ inputs.producers }}
-      VERIFIER_COMMIT: ${{ github.workflow_sha }}
+      # The verifier module always comes from the dispatch-time main HEAD,
+      # never the historical source tree; it may be newer than this workflow file.
+      VERIFIER_COMMIT: ${{ github.sha }}
       OPENCODE_CURSOR_REQUIRE_HOST: "1"
       CURSOR_NATIVE_REQUIRE_PI: "1"
     steps:
