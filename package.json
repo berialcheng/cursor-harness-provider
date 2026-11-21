@@ -37,7 +37,8 @@
     "audit:source": "node scripts/audit-source.mjs",
     "lint:rust": "node scripts/lint-rust.mjs",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run lint:rust && npm run test:rust && npm run build && npm test && npm run test:packages"
+    "check:release": "npm run typecheck && npm run lint:rust && npm run test:rust && npm run build && npm test",
+    "check": "npm run check:release && npm run test:packages"
   },
   "overrides": {
     "undici": "8.12.3"
@@ -51,6 +52,7 @@
     "@types/node": "22.19.19",
     "esbuild": "0.27.4",
     "typescript": "5.9.3",
-    "vitest": "4.1.12"
+    "vitest": "4.1.12",
+    "yaml": "2.9.0"
   }
 }

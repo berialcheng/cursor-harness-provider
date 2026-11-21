@@ -1,0 +1,49 @@
+# Preparation alone may write Git refs and explicitly dispatch the tagged publisher.
+# AUTOMATED_NPM_RELEASES must be exactly "true"; an unset variable is disabled.
+name: automatic npm release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: Prepare a new version even without distributable changes
+        type: boolean
+        required: false
+        default: false
+      preview:
+        description: Prepare a version/tag and dispatch checks, but never publish npm packages
+        type: boolean
+        required: false
+        default: false
+permissions: {}
+concurrency:
+  group: automatic-release-preparation
+  cancel-in-progress: false
+  queue: max
+jobs:
+  prepare:
+    if: ${{ github.repository == 'berialcheng/cursor-harness-provider' && github.ref == 'refs/heads/main' && (vars.AUTOMATED_NPM_RELEASES == 'true' || (github.event_name == 'workflow_dispatch' && inputs.preview == true)) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      # Builtins only: no dependency installation or long-lived credential setup.
+      - name: Prepare coordinated version and explicitly dispatch tagged publish.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTOMATED_NPM_RELEASES: ${{ vars.AUTOMATED_NPM_RELEASES || 'false' }}
+          FORCE_RELEASE: ${{ inputs.force_release == true }}
+          PREVIEW: ${{ inputs.preview == true }}
+        run: node scripts/prepare-release.mjs --force "$FORCE_RELEASE" --preview "$PREVIEW"

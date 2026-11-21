@@ -1,41 +1,115 @@
-# Pushes only verify artifacts. Explicit dispatch may stage them for human npm approval.
-# Trusted Publisher: publish.yml, environment npm-release, stage-only (configured in npm).
-name: release preflight and optional npm staging
+# The matching immutable tag is the only npm writer identity. No push trigger:
+# auto-release.yml explicitly dispatches this workflow after its atomic Git push.
+name: release verification and direct npm publication
 on:
   workflow_dispatch:
     inputs:
-      stage_npm:
-        description: Stage verified tarballs in npm; human approval/2FA is still required
-        type: boolean
-        required: false
-        default: false
       version:
-        description: Must exactly match the source and verified bundle version
+        description: Must exactly match all source, native and bundle versions
         type: string
         required: true
-        default: "0.3.0"
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/publish.yml"
-      - "release.config.json"
-      - "package*.json"
-      - "Cargo.*"
-      - "crates/**"
-      - "packages/**"
-      - "scripts/**"
-      - "test/**"
-      - "vendor/**"
-      - "licenses/**"
-      - "LICENSE"
-      - "THIRD_PARTY_NOTICES.md"
+      publish_npm:
+        description: Publish directly with OIDC after every same-run gate succeeds
+        type: boolean
+        required: false
+        default: true
 permissions:
   contents: read
 concurrency:
-  group: release-preflight-${{ github.ref }}
+  # Keep every pending publisher (up to GitHub's documented 100-run limit).
+  # Read-only checks cannot replace or block a pending registry writer.
+  group: ${{ inputs.publish_npm == true && 'npm-release' || format('npm-release-readonly-{0}', github.ref) }}
   cancel-in-progress: false
+  queue: max
 jobs:
+  source:
+    if: ${{ github.repository == 'berialcheng/cursor-harness-provider' && github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: External Cargo metadata directory
+        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cursor-release-source-target" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.99.1
+      - name: Validate source versions, main ancestry and coordinator tag trace
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          PUBLISH_NPM: ${{ inputs.publish_npm }}
+          AUTOMATED_NPM_RELEASES: ${{ vars.AUTOMATED_NPM_RELEASES || 'false' }}
+          WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { releaseSource, sourceIdentity } from './scripts/release.mjs';
+          import { versionFiles } from './scripts/prepare-release.mjs';
+          import { checkRustWorkspace } from './scripts/rust-env.mjs';
+          const env = process.env, version = env.RELEASE_VERSION;
+          assert(/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(version));
+          assert(version.split('.').every(part => Number.isSafeInteger(Number(part))));
+          assert(['true', 'false'].includes(env.PUBLISH_NPM));
+          if (env.PUBLISH_NPM === 'true') assert.equal(env.AUTOMATED_NPM_RELEASES, 'true', 'Automatic publication is disabled');
+          assert.equal(env.GITHUB_REPOSITORY, 'berialcheng/cursor-harness-provider');
+          assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
+          assert(/^[a-f0-9]{40}$/.test(env.GITHUB_SHA));
+          assert.equal(env.GITHUB_WORKFLOW_REF, env.GITHUB_REPOSITORY + '/.github/workflows/publish.yml@' + env.GITHUB_REF);
+          const git = args => execFileSync('git', ['--no-replace-objects', ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+          assert.equal(git(['rev-parse', '--verify', 'HEAD']).trim(), env.GITHUB_SHA);
+          // workflow_sha may name the workflow file's last-modified commit, not
+          // the run commit. Accept it only as an ancestor whose copy of this
+          // workflow file is byte-identical to HEAD, so the executed workflow
+          // can never be foreign to the release commit.
+          if (env.WORKFLOW_COMMIT !== env.GITHUB_SHA) {
+            assert(/^[a-f0-9]{40}$/.test(env.WORKFLOW_COMMIT));
+            git(['merge-base', '--is-ancestor', env.WORKFLOW_COMMIT, env.GITHUB_SHA]);
+            git(['diff', '--quiet', env.WORKFLOW_COMMIT, env.GITHUB_SHA, '--', '.github/workflows/publish.yml']);
+          }
+          assert.equal(releaseSource(process.cwd()).version, version);
+          assert.equal(checkRustWorkspace().version, version);
+          assert.equal(sourceIdentity(process.cwd()).commit, env.GITHUB_SHA);
+          git(['merge-base', '--is-ancestor', 'HEAD', 'refs/remotes/origin/main']);
+          if (env.GITHUB_REF === 'refs/heads/main') {
+            assert.equal(env.PUBLISH_NPM, 'false', 'main is only a read-only migration dry run');
+          } else {
+            const tag = 'v' + version, ref = 'refs/tags/' + tag;
+            assert.equal(env.GITHUB_REF, ref);
+            const object = git(['rev-parse', '--verify', ref + '^{tag}']).trim();
+            assert(/^[a-f0-9]{40}$/.test(object), 'An annotated version tag is required');
+            assert.equal(git(['rev-parse', '--verify', ref + '^{commit}']).trim(), env.GITHUB_SHA);
+            const text = git(['cat-file', '-p', object]), boundary = text.indexOf('\n\n');
+            assert(boundary > 0);
+            const headers = text.slice(0, boundary).split('\n');
+            assert.equal(headers.length, 4);
+            assert.equal(headers[0], 'object ' + env.GITHUB_SHA);
+            assert.equal(headers[1], 'type commit');
+            assert.equal(headers[2], 'tag ' + tag);
+            assert(headers[3].startsWith('tagger '));
+            const annotation = /^cursor-harness-provider automated release\n\nRelease-Version: ([^\n]+)\nRelease-Source: ([a-f0-9]{40})\nRelease-Publish-Npm: (true|false)\nRelease-Run: [1-9][0-9]*\nRelease-Attempt: [1-9][0-9]*\nRelease-Nonce: [a-f0-9-]{36}\n$/.exec(text.slice(boundary + 2));
+            assert(annotation, 'Coordinator annotation is missing or ambiguous');
+            assert.equal(annotation[1], version);
+            assert.equal(annotation[3], env.PUBLISH_NPM, 'Publication requires Release-Publish-Npm: true');
+            const parent = annotation[2];
+            assert.equal(git(['rev-list', '--parents', '-n', '1', 'HEAD']).trim(), env.GITHUB_SHA + ' ' + parent);
+            assert.equal(git(['show', '-s', '--format=%B', 'HEAD']).trimEnd(),
+              'chore(release): prepare v' + version + '\n\nKeep all distributable package and native source versions coordinated.\n\nRelease-Source: ' + parent);
+            const changed = git(['diff-tree', '--no-commit-id', '--name-only', '--no-renames', '-r', '-z', parent, 'HEAD', '--']);
+            assert(changed.endsWith('\0'));
+            assert.deepEqual(changed.slice(0, -1).split('\0').sort(), [...versionFiles].sort());
+          }
+          console.log('Validated source/version/ref and main ancestry: ' + env.GITHUB_SHA);
+          NODE
   build:
+    needs: source
     strategy:
       fail-fast: false
       matrix:
@@ -59,15 +133,16 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: External Cargo directory
+      - name: External Cargo directory and minimum macOS
         run: |
           echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cursor-release-target" >> "$GITHUB_ENV"
           if [ "$RUNNER_OS" = macOS ]; then echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> "$GITHUB_ENV"; fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22.22.0"
-          package-manager-cache: false
+          cache: npm
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
         with:
           toolchain: 1.99.1
@@ -81,7 +156,8 @@ jobs:
         run: |
           npm install --global --legacy-peer-deps @opencode/cli@2.2.5
           opencode --version
-      - run: npm run check
+      # exportPart below tests the exact single-target archives; do not duplicate it.
+      - run: npm run check:release
       - run: npm run audit:source
       - name: Export tested single-target tarballs
         run: npm run release:export -- --output "$RUNNER_TEMP/part"
@@ -93,17 +169,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   aggregate:
-    needs: build
+    needs: [source, build]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22.22.0"
-          package-manager-cache: false
+          cache: npm
       - run: npm ci --ignore-scripts --legacy-peer-deps
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
@@ -120,7 +197,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   verify-packed:
-    needs: aggregate
+    needs: [source, aggregate]
     strategy:
       fail-fast: false
       matrix:
@@ -139,14 +216,19 @@ jobs:
     env:
       OPENCODE_CURSOR_REQUIRE_HOST: "1"
       CURSOR_NATIVE_REQUIRE_PI: "1"
+      EXPECTED_TARGET: ${{ matrix.target }}
+      EXPECTED_PLATFORM: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22.22.0"
-          package-manager-cache: false
+          cache: npm
+      - name: Require matching packed-test host
+        run: node --input-type=module -e 'const p=process.platform==="linux"?"linux-"+process.arch+"-gnu":process.platform+"-"+process.arch;if(p!==process.env.EXPECTED_PLATFORM)throw Error("Wrong packed-test runner architecture")'
       - run: npm ci --ignore-scripts --legacy-peer-deps
       - name: Build only JS/types for mock-host test infrastructure
         run: npm run build:js && npm run build:types
@@ -161,15 +243,22 @@ jobs:
       - run: npm run release:verify -- --bundle "$RUNNER_TEMP/bundle"
       - name: Test exactly the merged tarballs, not workspace binaries
         run: npm run test:packages -- --archives "$RUNNER_TEMP/bundle"
-  stage-npm:
-    needs: [build, aggregate, verify-packed]
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.stage_npm == true && needs.build.result == 'success' && needs.aggregate.result == 'success' && needs['verify-packed'].result == 'success' }}
+  publish-npm:
+    needs: [source, build, aggregate, verify-packed]
+    if: ${{ github.repository == 'berialcheng/cursor-harness-provider' && github.event_name == 'workflow_dispatch' && github.ref == format('refs/tags/v{0}', inputs.version) && inputs.publish_npm == true && vars.AUTOMATED_NPM_RELEASES == 'true' && needs.source.result == 'success' && needs.build.result == 'success' && needs.aggregate.result == 'success' && needs['verify-packed'].result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     environment: npm-release
     permissions:
       contents: read
       id-token: write
+    outputs:
+      completion: ${{ steps.publish.outputs.completion }}
+      version: ${{ steps.publish.outputs.version }}
+      native_sha256: ${{ steps.publish.outputs.native_sha256 }}
+      pi_sha256: ${{ steps.publish.outputs.pi_sha256 }}
+      opencode_sha256: ${{ steps.publish.outputs.opencode_sha256 }}
+      producers: ${{ steps.publish.outputs.producers }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -183,16 +272,132 @@ jobs:
         with:
           name: release-preflight-bundle
           path: ${{ runner.temp }}/bundle/
-      - name: Install isolated, pinned staging CLI (no lifecycle scripts)
+      - name: Install isolated, pinned publication CLI (no lifecycle scripts)
         run: |
           umask 077
-          touch "$RUNNER_TEMP/stage-installer.npmrc"
-          npm install --prefix "$RUNNER_TEMP/stage-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/stage-installer.npmrc" --globalconfig /dev/null --cache "$RUNNER_TEMP/stage-cli-cache"
-      - name: Verify same-run bundle and stage native, then host adapters
+          touch "$RUNNER_TEMP/publish-installer-user.npmrc" "$RUNNER_TEMP/publish-installer-global.npmrc"
+          npm install --prefix "$RUNNER_TEMP/publish-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/publish-installer-user.npmrc" --globalconfig "$RUNNER_TEMP/publish-installer-global.npmrc" --cache "$RUNNER_TEMP/publish-installer-cache"
+      - name: Verify same-run bundle and publish native, then host adapters
+        id: publish
         env:
-          STAGE_NPM: ${{ inputs.stage_npm }}
+          PUBLISH_NPM: "true"
+          AUTOMATED_NPM_RELEASES: ${{ vars.AUTOMATED_NPM_RELEASES || 'false' }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: >-
-          node scripts/stage-release.mjs --bundle "$RUNNER_TEMP/bundle"
+          node scripts/publish-release.mjs --bundle "$RUNNER_TEMP/bundle"
           --version "$RELEASE_VERSION"
-          --npm-cli "$RUNNER_TEMP/stage-cli/node_modules/npm/bin/npm-cli.js"
+          --npm-cli "$RUNNER_TEMP/publish-cli/node_modules/npm/bin/npm-cli.js"
+  verify-published:
+    needs: [source, build, aggregate, verify-packed, publish-npm]
+    # A failed/cancelled writer may already have published part of the cohort.
+    # Audit only; never retry writes, and never relax the original build attempt.
+    if: ${{ always() && needs.source.result == 'success' && needs.build.result == 'success' && needs.aggregate.result == 'success' && needs['verify-packed'].result == 'success' && needs['publish-npm'].result != 'skipped' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      completion: ${{ steps.report.outputs.completion }}
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      EXPECTED_PRODUCERS: ${{ needs['publish-npm'].outputs.producers }}
+      OPENCODE_CURSOR_REQUIRE_HOST: "1"
+      CURSOR_NATIVE_REQUIRE_PI: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          cache: npm
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-preflight-bundle
+          path: ${{ runner.temp }}/bundle/
+      - name: Recover expected hashes from the verified same-run bundle
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { verifyBundle } from './scripts/release.mjs';
+          const env = process.env;
+          const bundle = verifyBundle({ projectRoot: process.cwd(), bundleDirectory: join(env.RUNNER_TEMP, 'bundle'), localOnly: false });
+          assert.equal(bundle.version, env.RELEASE_VERSION);
+          assert.equal(bundle.identity.commit, env.GITHUB_SHA);
+          assert.equal(bundle.identity.runId, env.GITHUB_RUN_ID);
+          assert.equal(bundle.identity.runAttempt, env.GITHUB_RUN_ATTEMPT);
+          assert.equal(bundle.identity.localOnly, false);
+          assert.equal(bundle.packages.length, 3);
+          const hashes = Object.fromEntries(['native', 'pi', 'opencode'].map(kind => {
+            const items = bundle.packages.filter(item => item.kind === kind);
+            assert.equal(items.length, 1);
+            assert.equal(typeof items[0].sha256, 'string');
+            assert.match(items[0].sha256, /^[a-f0-9]{64}$/);
+            return [kind, items[0].sha256];
+          }));
+          appendFileSync(env.GITHUB_ENV, 'EXPECTED_SHA256=' + JSON.stringify(hashes) + '\n');
+          NODE
+      - name: Install credential-free pinned verification CLI
+        run: |
+          umask 077
+          touch "$RUNNER_TEMP/verify-installer-user.npmrc" "$RUNNER_TEMP/verify-installer-global.npmrc"
+          npm install --prefix "$RUNNER_TEMP/verify-cli" npm@11.21.0 --ignore-scripts --no-package-lock --no-audit --no-fund --registry https://registry.npmjs.org/ --userconfig "$RUNNER_TEMP/verify-installer-user.npmrc" --globalconfig "$RUNNER_TEMP/verify-installer-global.npmrc" --cache "$RUNNER_TEMP/verify-installer-cache"
+      - name: Verify public bytes, signatures, provenance and actual producer runs
+        id: verify
+        shell: bash
+        run: |
+          set --
+          if [ -n "$EXPECTED_PRODUCERS" ]; then set -- --producers "$EXPECTED_PRODUCERS"; fi
+          node scripts/verify-published.mjs --version "$RELEASE_VERSION" --source "$GITHUB_SHA" \
+            --sha256 "$EXPECTED_SHA256" --partial true \
+            --npm-cli "$RUNNER_TEMP/verify-cli/node_modules/npm/bin/npm-cli.js" \
+            --output "$RUNNER_TEMP/public-verification" "$@"
+      - name: Summarize read-only publication verification
+        id: report
+        if: ${{ always() }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync, readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const env = process.env, kinds = ['native', 'pi', 'opencode'];
+          let report;
+          try { report = JSON.parse(readFileSync(join(env.RUNNER_TEMP, 'public-verification/verification.json'), 'utf8')); }
+          catch (error) { if (error.code !== 'ENOENT') throw error; }
+          let complete = false, summary = 'No verified report is available; public registry status is unknown.';
+          if (report !== undefined) {
+            assert.equal(typeof report.complete, 'boolean');
+            assert.equal(report.version, env.RELEASE_VERSION);
+            assert.equal(report.source, env.GITHUB_SHA);
+            assert(Array.isArray(report.packages) && Array.isArray(report.missing));
+            const verified = report.packages.map(item => item.kind), missing = report.missing.map(item => item.kind);
+            assert.deepEqual([...verified, ...missing].sort(), [...kinds].sort());
+            assert.equal(report.complete, missing.length === 0);
+            complete = report.complete;
+            // Only fixed package-kind strings and a boolean reach Markdown/outputs.
+            summary = '```json\n' + JSON.stringify({ complete, verified, missing }, null, 2) + '\n```';
+          }
+          appendFileSync(env.GITHUB_OUTPUT, 'completion=' + String(complete) + '\n');
+          appendFileSync(env.GITHUB_STEP_SUMMARY, '## Read-only public registry verification\n\n' + summary + '\n');
+          NODE
+      - if: ${{ steps.report.outputs.completion == 'true' }}
+        run: npm ci --ignore-scripts --legacy-peer-deps
+      - name: Build only JS/types for isolated host acceptance
+        if: ${{ steps.report.outputs.completion == 'true' }}
+        run: npm run build:js && npm run build:types
+      - name: Install pinned OpenCode host
+        if: ${{ steps.report.outputs.completion == 'true' }}
+        run: |
+          npm install --global --legacy-peer-deps @opencode/cli@2.2.5
+          opencode --version
+      - name: Test exactly the publicly verified registry archives (seven actual host cases)
+        if: ${{ steps.report.outputs.completion == 'true' }}
+        run: npm run test:packages -- --archives "$RUNNER_TEMP/public-verification/archives"
+      - name: Fail incomplete or unverified public release cohorts
+        if: ${{ always() && steps.report.outputs.completion != 'true' }}
+        run: |
+          echo '::error::Public release cohort is incomplete or unverified; inspect the read-only verification summary.'
+          exit 1

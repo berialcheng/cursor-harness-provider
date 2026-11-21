@@ -6,7 +6,61 @@ on:
 permissions:
   contents: read
 jobs:
+  classify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      run_checks: ${{ steps.classify.outputs.run_checks }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22.22.0"
+          package-manager-cache: false
+      - name: Delegate only unambiguous main distribution pushes to release checks
+        id: classify
+        env:
+          AUTOMATED_NPM_RELEASES: ${{ vars.AUTOMATED_NPM_RELEASES || 'false' }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync, readFileSync } from 'node:fs';
+          let runChecks = true;
+          const env = process.env;
+          if (env.GITHUB_REPOSITORY === 'berialcheng/cursor-harness-provider' &&
+              env.GITHUB_EVENT_NAME === 'push' && env.GITHUB_REF === 'refs/heads/main' &&
+              env.AUTOMATED_NPM_RELEASES === 'true') {
+            try {
+              const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'));
+              const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value) && !/^0+$/.test(value);
+              assert(sha(event.before) && sha(event.after) && event.after === env.GITHUB_SHA);
+              assert(event.created === false && event.deleted === false && event.forced === false);
+              const git = args => execFileSync('git', args, { maxBuffer: 16 * 1024 * 1024 });
+              assert.equal(git(['rev-parse', 'HEAD']).toString().trim(), event.after);
+              git(['merge-base', '--is-ancestor', event.before, event.after]);
+              const diff = new TextDecoder('utf-8', { fatal: true }).decode(
+                git(['diff', '--name-only', '--no-renames', '-z', event.before, event.after, '--']));
+              assert(diff === '' || diff.endsWith('\0'));
+              const paths = diff === '' ? [] : diff.slice(0, -1).split('\0');
+              assert(paths.every(path => path.length > 0));
+              const { isDistributablePath } = await import('./scripts/prepare-release.mjs');
+              runChecks = !paths.some(isDistributablePath);
+            } catch {
+              console.log('Push classification uncertain; retaining the original full checks.');
+            }
+          }
+          appendFileSync(env.GITHUB_OUTPUT, 'run_checks=' + runChecks + '\n');
+          console.log(runChecks ? 'Run original checks.' : 'Automatic release owns all three native build/packed-host gates.');
+          NODE
   check:
+    needs: classify
+    # A broken/missing classifier output must never silently suppress validation.
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.run_checks != 'false') }}
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +83,8 @@ jobs:
         with:
           toolchain: 1.99.1
           components: rustfmt, clippy
+      # This pre-existing cache is for non-publishing checks only. Release builds
+      # deliberately do not restore a compiled target cache.
       - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: ". -> ${{ runner.temp }}/cursor-native-target"
