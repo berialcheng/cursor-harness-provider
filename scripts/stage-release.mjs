@@ -1,4 +1,4 @@
-/** The only registry-writing path: OIDC staging, never final publication or approval. */
+/** Historical manual OIDC staging helper; unattended releases use publish-release.mjs. */
 import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
