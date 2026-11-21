@@ -256,7 +256,7 @@ function producerSelectors(request, kind) {
 function verifyAttestationAudit(stdout, receipts, request, preflightBindings) {
   const audit = json(stdout, "verified attestation audit");
   // Sanitized diagnostics: npm-fixed schema key names and counts only.
-  const shape = { keys: Object.keys(audit).sort(), invalid: audit.invalid?.length, missing: audit.missing?.length, verified: audit.verified?.length, receipts: receipts.length };
+  const shape = { keys: Object.keys(audit).sort(), invalid: audit.invalid?.length, missing: audit.missing?.length, verified: audit.verified?.length, verifiedNames: Array.isArray(audit.verified) ? audit.verified.map(row => row?.name).sort() : undefined, receipts: receipts.length };
   requireThat(sameKeys(audit, ["invalid", "missing", "verified"]) && Array.isArray(audit.invalid) && audit.invalid.length === 0 &&
     Array.isArray(audit.missing) && audit.missing.length === 0 && Array.isArray(audit.verified) && receipts.length > 0 &&
     audit.verified.length === receipts.length, "npm JSON must contain exactly the expected nonzero verified packages and no invalid/missing entries; observed shape " + JSON.stringify(shape));
@@ -394,9 +394,11 @@ export async function verifyPublished(options, { execute = execFileSync, fetchJs
       const specs = receipts.map(item => item.name + "@" + version);
       run(["install", "--ignore-scripts", "--legacy-peer-deps", "--save-exact", "--package-lock=true", "--no-audit", "--no-fund", ...specs], audit);
       const lock = checkLock(audit, receipts, version);
+      // Text first: it reports how many packages were audited at all, which
+      // distinguishes tree/filter problems from --json attestation-row gaps.
+      signatureAudit = verifySignatureAudit(run(["audit", "signatures"], audit), receipts.length);
       verifyAttestationAudit(run(["audit", "signatures", "--json", "--include-attestations"], audit), receipts, request, preflightBindings);
       requireProducers();
-      signatureAudit = verifySignatureAudit(run(["audit", "signatures"], audit), receipts.length);
       requireThat(checkLock(audit, receipts, version).equals(lock), "Installed lockfile changed during signature audit");
     }
     // A global selector describes only a common, cryptographically verified

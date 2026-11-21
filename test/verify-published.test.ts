@@ -155,8 +155,8 @@ describe("published registry verification", () => {
       sourceRun: "123", sourceAttempt: "2", producers: producerMap(), signatureAudit: { registrySignatures: 3, attestations: 3 } });
     expect(commands(f)).toEqual(["--version", "view", "pack", "view", "pack", "view", "pack", "install", "audit", "audit"]);
     const audits = f.execute.mock.calls.filter(call => call[1][1] === "audit");
-    expect(audits[0][1].slice(1, 5)).toEqual(["audit", "signatures", "--json", "--include-attestations"]);
-    expect(audits[1][1].slice(1, 3)).toEqual(["audit", "signatures"]);
+    expect(audits[0][1].slice(1, 3)).toEqual(["audit", "signatures"]);
+    expect(audits[1][1].slice(1, 5)).toEqual(["audit", "signatures", "--json", "--include-attestations"]);
     for (const receipt of result.packages) expect(receipt).toMatchObject({ location: "node_modules/" + receipt.name, registry,
       attestationBundles: f.documents[receipt.kind as Kind].attestations });
     expect(f.execute.mock.calls[0].slice(0, 2)).toEqual(["git", ["rev-parse", "--verify", "HEAD"]]);
@@ -467,7 +467,7 @@ describe("published registry verification", () => {
     const f = fixture(); Object.assign(f.options, { sourceRun: "123", sourceAttempt: "2" });
     f.behavior.onVerified = audit => changeVerifiedPayload(audit, "pi", change);
     await expect(verify(f)).rejects.toThrow();
-    expect(f.fetchJson).toHaveBeenCalledTimes(3); expect(commands(f).slice(-2)).toEqual(["install", "audit"]);
+    expect(f.fetchJson).toHaveBeenCalledTimes(3); expect(commands(f).slice(-2)).toEqual(["audit", "audit"]);
     expect(existsSync(join(f.options.outputDirectory, "verification.json"))).toBe(false);
   });
   it("binds exact payload bytes for every verified bundle, not just parsed provenance fields", async () => {
@@ -510,7 +510,7 @@ describe("published registry verification", () => {
     ["foreign attestation endpoint", (a: Data) => { a.verified[0].attestations = { url: "https://other.invalid/-/npm/v1/attestations/native" }; }],
   ])("rejects crypto JSON %s even with successful text counts", async (_label, change) => {
     const f = fixture(); f.behavior.onVerified = change;
-    await expect(verify(f)).rejects.toThrow(); expect(commands(f).filter(c => c === "audit")).toHaveLength(1);
+    await expect(verify(f)).rejects.toThrow(); expect(commands(f).filter(c => c === "audit")).toHaveLength(2);
     expect(existsSync(join(f.options.outputDirectory, "verification.json"))).toBe(false);
   });
   it.each(["", "not JSON", "null", "[]", "{}", JSON.stringify({ invalid: [], missing: [] }),
