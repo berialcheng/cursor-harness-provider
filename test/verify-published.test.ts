@@ -165,7 +165,7 @@ describe("published registry verification", () => {
     for (const kind of kinds) expect(readFileSync(join(result.archivesDirectory, kind + ".tgz"))).toEqual(f.bytes[kind]);
     expect(JSON.parse(readFileSync(join(f.options.outputDirectory, "verification.json"), "utf8"))).toEqual(result);
     const install = f.execute.mock.calls.find(call => call[1][1] === "install")!;
-    expect(install[1]).toEqual(expect.arrayContaining(["--ignore-scripts", "--legacy-peer-deps", "--save-exact", "--no-audit", "--no-fund", ...kinds.map(kind => nameFor(kind) + "@0.3.1")]));
+    expect(install[1]).toEqual(expect.arrayContaining(["--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", ...kinds.map(kind => nameFor(kind) + "@0.3.1")]));
     expect(install[2].cwd).toBe(join(f.options.outputDirectory, "audit"));
     for (const call of f.execute.mock.calls.filter(call => call[1][1] === "pack")) expect(call[1]).toContain("--ignore-scripts");
   });

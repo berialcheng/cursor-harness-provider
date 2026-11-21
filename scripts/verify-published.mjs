@@ -246,7 +246,7 @@ export function verifySignatureAudit(stdout, expectedCount = 3) {
   requireThat((lines.length === 3 || (lines.length === 4 && lines[3] === "(use --json --include-attestations to view attestation details)")) &&
     new RegExp("^audited " + expectedCount + " package" + plural + " in [0-9]+s$").test(lines[0]) &&
     lines[1] === expectedCount + have + "registry signature" + plural && lines[2] === expectedCount + have + "attestation" + plural,
-  "npm must verify exactly " + expectedCount + " registry signatures and " + expectedCount + " attestations (no zero/partial audit)");
+  "npm must verify exactly " + expectedCount + " registry signatures and " + expectedCount + " attestations (no zero/partial audit); observed " + JSON.stringify(lines));
   return { registrySignatures: expectedCount, attestations: expectedCount };
 }
 function producerSelectors(request, kind) {
@@ -345,8 +345,11 @@ export async function verifyPublished(options, { execute = execFileSync, fetchJs
       timeout: 30000, maxBuffer: 1024, killSignal: "SIGKILL", stdio: ["ignore", "pipe", "pipe"] }); }
     catch { throw new PublishedVerificationError("Unable to verify source checkout HEAD"); }
     requireThat(typeof head === "string" && head.trim() === source, "Checkout HEAD differs from expected source commit");
+    // Match the flag set that already verified the real public release. Never
+    // pass --workspaces=false here: it switches npm audit signatures to the
+    // exclude-workspaces dependency filter, which audited only one package.
     const config = ["--registry", registry, "--userconfig", user, "--globalconfig", global, "--cache", cache,
-      "--fetch-retries", "0", "--fetch-timeout", String(fetchTimeout), "--no-update-notifier", "--color=false", "--no-progress", "--logs-max=0", "--workspaces=false", "--strict-ssl=true"];
+      "--fetch-retries", "0", "--fetch-timeout", String(fetchTimeout), "--no-update-notifier"];
     const run = (args, cwd = outputDirectory) => {
       requireThat(["--version", "view", "pack", "install", "audit"].includes(args[0]) && (args[0] !== "audit" || args[1] === "signatures"), "Only read-only registry commands are allowed");
       let stdout;
@@ -392,7 +395,7 @@ export async function verifyPublished(options, { execute = execFileSync, fetchJs
     if (receipts.length > 0) {
       requireProducers();
       const specs = receipts.map(item => item.name + "@" + version);
-      run(["install", "--ignore-scripts", "--legacy-peer-deps", "--save-exact", "--package-lock=true", "--no-audit", "--no-fund", ...specs], audit);
+      run(["install", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", ...specs], audit);
       const lock = checkLock(audit, receipts, version);
       // Text first: it reports how many packages were audited at all, which
       // distinguishes tree/filter problems from --json attestation-row gaps.
