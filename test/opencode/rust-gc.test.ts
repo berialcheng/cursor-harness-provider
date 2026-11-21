@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { nativeBindingPath } from "@cursor-harness-provider/native";
 const run = promisify(execFile);
 describe("Rust Node-API rejected-promise lifetime", () => {
   it("does not strongly retain failed async method receivers", async () => {
+    const { version } = JSON.parse(await readFile(new URL("../../packages/native/package.json", import.meta.url), "utf8"));
     const code = `
       const {createRequire}=await import('node:module');
       const {createServer}=await import('node:http2');
       const {once}=await import('node:events');
       const binding=createRequire(import.meta.url)(process.argv[1]);
-      if(binding.nativeVersion()!=='0.3.0')throw new Error('Expected the shared 0.3.0 native artifact');
+      if(binding.nativeVersion()!==process.argv[2])throw new Error('Expected the declared shared native artifact');
       const refs=[];
       const server=createServer();
       const sessions=new Set();
@@ -47,7 +49,7 @@ describe("Rust Node-API rejected-promise lifetime", () => {
         process.stdout.write(JSON.stringify({alive,receivers:refs.length}));
       } finally {for(const s of sessions)s.destroy();await new Promise(r=>server.close(r));}
     `;
-    const result = await run(process.execPath, ["--expose-gc", "--input-type=module", "-e", code, nativeBindingPath()], {
+    const result = await run(process.execPath, ["--expose-gc", "--input-type=module", "-e", code, nativeBindingPath(), version], {
       timeout: 15000, maxBuffer: 1024 * 1024,
     });
     expect(JSON.parse(result.stdout)).toEqual({ alive: 0, receivers: 5 });

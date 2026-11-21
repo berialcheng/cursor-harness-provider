@@ -90,7 +90,7 @@ function replies(server: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
-  it("loads NativeEngine 0.3.0 through the shared package without a JS protocol fallback", async () => {
+  it("loads the declared NativeEngine version through the shared package without a JS protocol fallback", async () => {
     const binding = createRequire(import.meta.url)(nativeBindingPath()) as {
       nativeVersion(): string; NativeEngine: new () => RustEngine;
     };
@@ -98,7 +98,8 @@ describe("production Rust runtime (NAPI + localhost HTTP/2)", () => {
     const hostPackage = new URL("../../packages/opencode/", import.meta.url);
     const manifest = JSON.parse(await readFile(new URL("package.json", runtimePackage), "utf8"));
     expect(manifest.name).toBe("@cursor-harness-provider/native");
-    expect(manifest.version).toBe("0.3.0");
+    const project = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
+    expect(manifest.version).toBe(project.version);
     expect(nativeVersion()).toBe(manifest.version);
     expect(binding.nativeVersion()).toBe(manifest.version);
     expect(createRustEngine()).toBeInstanceOf(binding.NativeEngine);
