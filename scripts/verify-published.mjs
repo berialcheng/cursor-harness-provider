@@ -395,7 +395,7 @@ export async function verifyPublished(options, { execute = execFileSync, fetchJs
     if (receipts.length > 0) {
       requireProducers();
       const specs = receipts.map(item => item.name + "@" + version);
-      run(["install", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", ...specs], audit);
+      run(["install", "--ignore-scripts", "--legacy-peer-deps", "--save-exact", "--no-audit", "--no-fund", ...specs], audit);
       const lock = checkLock(audit, receipts, version);
       // Text first: it reports how many packages were audited at all, which
       // distinguishes tree/filter problems from --json attestation-row gaps.
